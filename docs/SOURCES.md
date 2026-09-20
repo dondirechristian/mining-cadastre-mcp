@@ -114,9 +114,44 @@ Règles de lecture, à respecter à la lettre :
 | Champ | Règle |
 |---|---|
 | `CODE` | Identifiant numérique **stable entre éditions**. C'est la clé de jointure. **Ne jamais le reconstruire ni le normaliser.** |
-| `STATUT` | Trois valeurs : `valide`, `En renouvellement`, `Suspendu`. Casse telle quelle dans le document. |
+| `STATUT` | Vocabulaire **établi par observation**, voir ci-dessous. Casse telle quelle dans le document. |
 | `DATE D'OCTROI`, `DATE D'EXPIRATION` | Format `JJ/MM/AAAA`. |
 | `PROVINCES`, `COMMUNES` | Peuvent porter plusieurs valeurs séparées par `/` ou `,`. Conserver **la chaîne brute ET une version découpée**. |
+
+### Le vocabulaire des statuts n'est pas donné, il s'observe
+
+**Aucun document ne publie la liste des valeurs possibles du champ `STATUT`.**
+Celle du projet est établie par lecture des éditions, et **elle peut s'allonger
+à chaque nouvelle édition**. Ce n'est pas un référentiel, c'est un relevé.
+
+Vocabulaire retenu à ce jour, arbitré par le mainteneur :
+
+| Valeur | Origine |
+|---|---|
+| `valide` | sources du mainteneur |
+| `En renouvellement` | sources du mainteneur |
+| `Suspendu` | sources du mainteneur |
+| `En cours de renonciation` | **découvert à l'extraction de mars 2026**, ne figurait dans aucune source du mainteneur |
+
+Valeurs rencontrées à l'extraction de mars 2026 mais **non retenues à ce jour**,
+donc signalées comme hors vocabulaire dans le rapport et jamais rapprochées
+d'une valeur connue :
+
+| Valeur observée | Occurrences | Remarque |
+|---|---|---|
+| `En Renonciation` | 1 (section 4, p31) | à ne pas confondre d'office avec `En cours de renonciation` — le rapprochement serait une interprétation |
+| `Retiré` | 1 (section 4, p32) | statut absent de toutes les sources connues |
+
+Conséquence pour l'implémentation : le vocabulaire est **fermé au moment de la
+lecture** — la normalisation ne rapproche une cellule que d'une valeur retenue,
+et tout le reste part au rapport sans être corrigé. Élargir la liste est une
+décision du mainteneur, jamais de l'extraction.
+
+La mise en page éclate la cellule `STATUT` : « En » est imprimé au-dessus de
+« renouvellement », et l'OCR coupe les mots (`renouvellem ent`,
+`renouv E e n ll ement`). La normalisation compare donc les **lettres** de la
+cellule, sans tenir compte de l'ordre des mots ni de leur découpage. Le texte
+brut est conservé intact à côté, dans une colonne distincte.
 
 ### La contrainte OCR — et l'OCR qui manque
 

@@ -65,8 +65,18 @@ VOCABULAIRE_ENTETE = {
 
 MOTIF_DATE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 MOTIF_CODE = re.compile(r"^\d+$")
-STATUTS_CONNUS = {"valide", "en renouvellement", "suspendu"}
 CARACTERES_SUSPECTS = set("|\\~^`{}[]<>_@#$%*+=")
+
+# Vocabulaire FERMÉ des statuts, arbitré par le mainteneur. Établi par
+# observation sur les éditions lues : il peut s'allonger. « En cours de
+# renonciation » a été découvert à l'extraction de mars 2026 et ne figurait
+# dans aucune source du mainteneur. Voir docs/SOURCES.md.
+STATUTS_CANONIQUES = (
+    "valide",
+    "En renouvellement",
+    "Suspendu",
+    "En cours de renonciation",
+)
 
 # Paramètres géométriques, tous mesurés sur mars 2026 avant d'être codés.
 TOLERANCE_BORNE = 6.0     # regroupe les traits verticaux doublés
@@ -84,6 +94,32 @@ def aplatir(valeur: str | None) -> str:
 
 def brut(valeur: str | None) -> str:
     return "" if valeur is None else valeur
+
+
+def _lettres(texte: str) -> str:
+    """Lettres nues, sans accents, sans espaces, en minuscules."""
+    sans_accent = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode()
+    return "".join(c for c in sans_accent.lower() if c.isalpha())
+
+
+_EMPREINTES_STATUT = {
+    "".join(sorted(_lettres(s))): s for s in STATUTS_CANONIQUES
+}
+
+
+def normaliser_statut(valeur: str) -> str | None:
+    """Rend le statut canonique correspondant, ou None.
+
+    La mise en page éclate la cellule : « En » est imprimé au-dessus de
+    « renouvellement », et l'OCR coupe les mots (« renouvellem ent »,
+    « renouv E e n ll ement »). On compare donc les LETTRES de la cellule,
+    indépendamment de l'ordre des mots et de leur découpage.
+
+    Le vocabulaire est fermé : ce qui ne correspond à aucune des quatre
+    valeurs revient None et part au rapport. Rien n'est corrigé au jugé.
+    """
+    empreinte = "".join(sorted(_lettres(valeur)))
+    return _EMPREINTES_STATUT.get(empreinte)
 
 
 def nom_fichier(texte: str) -> str:
@@ -217,6 +253,7 @@ def lignes_visuelles(page, bornes: list[float], haut: float, bas: float) -> list
         lignes.append(
             {
                 "y": min(m["top"] for m in groupe),
+                "cellules_mots": cellules,
                 "cellules": [" ".join(c) for c in cellules],
                 "mots": [m["text"] for m in groupe],
             }
@@ -224,14 +261,44 @@ def lignes_visuelles(page, bornes: list[float], haut: float, bas: float) -> list
     return lignes
 
 
-def est_ligne_entete(ligne: dict) -> bool:
-    """Vrai si TOUS les mots de la ligne appartiennent au vocabulaire d'en-tête.
+def _est_mot_entete(mot: str) -> bool:
+    return mot.upper().strip(":.") in VOCABULAIRE_ENTETE
 
-    Attrape la ligne d'en-tête complète comme ses fragments (« DATE DATE »,
-    « D'OCTROI D'EXPIRATION »), qu'ils soient au-dessus ou au-dessous d'elle.
+
+def separer_entete(ligne: dict) -> tuple[bool, dict | None]:
+    """Sépare les mots d'en-tête des données dans une même ligne visuelle.
+
+    Trois cas :
+      - aucun mot d'en-tête  -> (False, ligne) : ligne de données ordinaire
+      - que des mots d'en-tête -> (True, None) : en-tête répété, écarté
+      - les deux mêlés -> (True, ligne nettoyée) : FUSION. L'en-tête et une
+        ligne de données se sont retrouvés sur la même bande. On retire les
+        mots d'en-tête et on rend les données, au lieu de jeter la ligne.
+
+    Attrape aussi les fragments (« DATE DATE », « D'OCTROI D'EXPIRATION »),
+    qu'ils soient au-dessus ou au-dessous de la ligne d'en-tête.
     """
-    mots = [m.upper().strip(":.") for m in ligne["mots"] if m.strip()]
-    return bool(mots) and all(m in VOCABULAIRE_ENTETE for m in mots)
+    mots = [m for m in ligne["mots"] if m.strip()]
+    if not mots:
+        return False, None
+    nb_entete = sum(1 for m in mots if _est_mot_entete(m))
+    if nb_entete == 0:
+        return False, ligne
+    if nb_entete == len(mots):
+        return True, None
+
+    cellules_mots = [
+        [m for m in cellule if not _est_mot_entete(m)] for cellule in ligne["cellules_mots"]
+    ]
+    restants = [m for cellule in cellules_mots for m in cellule]
+    if not restants:
+        return True, None
+    return True, {
+        "y": ligne["y"],
+        "cellules_mots": cellules_mots,
+        "cellules": [" ".join(c) for c in cellules_mots],
+        "mots": restants,
+    }
 
 
 def est_ancre(ligne: dict) -> bool:
@@ -267,6 +334,7 @@ def rattacher(lignes: list[dict], ancres: list[int]) -> dict[int, list[int]]:
 def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
     enregistrements: list[dict] = []
     rejets: list[dict] = []
+    nb_fusions = 0
 
     for page in pdf.pages:
         section = section_de_page(sections, page.page_number)
@@ -291,11 +359,19 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
         # Les en-têtes répétés sont des lignes à part entière : écartées en tant
         # que telles, sans rien absorber. Ce ne sont PAS des rejets — les
         # compter comme tels laisserait croire à une perte de données.
-        entetes = [i for i, l in enumerate(lignes) if est_ligne_entete(l)]
+        # Une ligne qui mêle en-tête et données est découpée, jamais jetée.
+        analyse = [separer_entete(l) for l in lignes]
+        premier_entete = next((i for i, (e, _) in enumerate(analyse) if e), None)
 
-        # Tout ce qui précède le premier en-tête est du hors-tableau résiduel.
-        depart = min(entetes) + 1 if entetes else 0
-        corps = [l for i, l in enumerate(lignes) if i >= depart and i not in entetes]
+        corps = []
+        for i, (est_entete, reste) in enumerate(analyse):
+            if premier_entete is not None and i < premier_entete:
+                continue  # hors-tableau résiduel, au-dessus de l'en-tête
+            if reste is None:
+                continue
+            if est_entete:
+                nb_fusions += 1
+            corps.append(reste)
 
         ancres = [i for i, l in enumerate(corps) if est_ancre(l)]
         if not ancres:
@@ -328,11 +404,10 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
             for colonne, cellule in zip(COLONNES, cellules_brutes):
                 enreg[f"{colonne}_brut"] = brut(cellule)
                 enreg[f"{colonne}_plat"] = aplatir(cellule)
-            suspects = champs_suspects(enreg)
-            enreg["suspects"] = " | ".join(suspects)
-            enreg["nb_suspects"] = len(suspects)
-            enregistrements.append(enreg)
+            enregistrements.append(finaliser(enreg))
 
+    if nb_fusions:
+        print(f"[position] {nb_fusions} lignes mêlant en-tête et données ont été découpées")
     return enregistrements, rejets
 
 
@@ -403,10 +478,7 @@ def extraire_par_tables(pdf, sections) -> tuple[list[dict], list[dict]]:
                 for colonne, cellule in zip(COLONNES, cellules):
                     enreg[f"{colonne}_brut"] = brut(cellule)
                     enreg[f"{colonne}_plat"] = aplatir(cellule)
-                suspects = champs_suspects(enreg)
-                enreg["suspects"] = " | ".join(suspects)
-                enreg["nb_suspects"] = len(suspects)
-                enregistrements.append(enreg)
+                enregistrements.append(finaliser(enreg))
 
     return enregistrements, rejets
 
@@ -414,6 +486,19 @@ def extraire_par_tables(pdf, sections) -> tuple[list[dict], list[dict]]:
 # --------------------------------------------------------------------------
 # Signalement — jamais de correction
 # --------------------------------------------------------------------------
+
+def finaliser(enreg: dict) -> dict:
+    """Ajoute le statut normalisé puis le relevé des champs suspects.
+
+    `statut_brut` et `statut_plat` ne sont JAMAIS modifiés : la normalisation
+    vit dans une colonne à part.
+    """
+    enreg["statut_normalise"] = normaliser_statut(enreg["statut_plat"]) or ""
+    suspects = champs_suspects(enreg)
+    enreg["suspects"] = " | ".join(suspects)
+    enreg["nb_suspects"] = len(suspects)
+    return enreg
+
 
 def champs_suspects(enreg: dict) -> list[str]:
     suspects = []
@@ -423,8 +508,8 @@ def champs_suspects(enreg: dict) -> list[str]:
         suspects.append(f"date d'octroi hors format: {enreg['date_octroi_plat']!r}")
     if not MOTIF_DATE.match(enreg["date_expiration_plat"]):
         suspects.append(f"date d'expiration hors format: {enreg['date_expiration_plat']!r}")
-    if enreg["statut_plat"].lower() not in STATUTS_CONNUS:
-        suspects.append(f"statut inconnu: {enreg['statut_plat']!r}")
+    if not enreg["statut_normalise"]:
+        suspects.append(f"statut hors vocabulaire: {enreg['statut_plat']!r}")
     if not enreg["no_plat"]:
         suspects.append("numéro d'ordre absent")
     for colonne in ("nom", "detenteur", "provinces", "communes"):
@@ -445,6 +530,8 @@ def colonnes_csv() -> list[str]:
     entetes = ["section_ordre", "section_titre", "page", "methode"]
     for colonne in COLONNES:
         entetes += [f"{colonne}_brut", f"{colonne}_plat"]
+        if colonne == "statut":
+            entetes.append("statut_normalise")
     return entetes + ["nb_suspects", "suspects"]
 
 
