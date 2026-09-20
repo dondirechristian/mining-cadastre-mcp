@@ -52,6 +52,10 @@ COLONNES = [
     "communes",
 ]
 
+# Sans au moins l'un de ces champs, il n'y a pas de titre identifiable.
+# Ni STATUT, ni PROVINCES, ni COMMUNES n'identifient un titre à eux seuls.
+COLONNES_IDENTIFIANTES = ("code", "nom", "detenteur", "date_octroi", "date_expiration")
+
 MOTIF_SECTION = re.compile(r"^LISTE\s+DES\s+", re.I)
 MOTIF_FIN_SECTION = re.compile(r"VALIDES?\s+A\s+LA\s+DATE\s+DU", re.I)
 
@@ -67,15 +71,20 @@ MOTIF_DATE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 MOTIF_CODE = re.compile(r"^\d+$")
 CARACTERES_SUSPECTS = set("|\\~^`{}[]<>_@#$%*+=")
 
-# Vocabulaire FERMÉ des statuts, arbitré par le mainteneur. Établi par
-# observation sur les éditions lues : il peut s'allonger. « En cours de
-# renonciation » a été découvert à l'extraction de mars 2026 et ne figurait
-# dans aucune source du mainteneur. Voir docs/SOURCES.md.
+# Vocabulaire des statuts, arbitré par le mainteneur. Fermé au moment de la
+# lecture — une cellule ne se rapproche que d'une de ces valeurs — mais
+# LA LISTE N'EST PAS CLOSE : elle est établie par observation et s'allonge à
+# mesure des éditions. « En cours de renonciation », « En Renonciation » et
+# « Retiré » ont tous trois été découverts à l'extraction de mars 2026.
+# L'élargir est une décision du mainteneur, jamais de l'extraction.
+# Voir docs/SOURCES.md.
 STATUTS_CANONIQUES = (
     "valide",
     "En renouvellement",
     "Suspendu",
     "En cours de renonciation",
+    "En Renonciation",
+    "Retiré",
 )
 
 # Paramètres géométriques, tous mesurés sur mars 2026 avant d'être codés.
@@ -113,10 +122,14 @@ def normaliser_statut(valeur: str) -> str | None:
     La mise en page éclate la cellule : « En » est imprimé au-dessus de
     « renouvellement », et l'OCR coupe les mots (« renouvellem ent »,
     « renouv E e n ll ement »). On compare donc les LETTRES de la cellule,
-    indépendamment de l'ordre des mots et de leur découpage.
+    indépendamment de l'ordre des mots, de leur découpage, de la casse et
+    des accents — sans quoi le problème revient à chaque édition.
 
-    Le vocabulaire est fermé : ce qui ne correspond à aucune des quatre
-    valeurs revient None et part au rapport. Rien n'est corrigé au jugé.
+    Ce qui ne correspond à aucune valeur du vocabulaire revient None et part
+    au rapport. Rien n'est corrigé au jugé.
+
+    La forme brute est conservée telle qu'imprimée dans `statut_brut` et
+    `statut_plat` : on doit pouvoir savoir ce que le document disait.
     """
     empreinte = "".join(sorted(_lettres(valeur)))
     return _EMPREINTES_STATUT.get(empreinte)
@@ -404,6 +417,32 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
             for colonne, cellule in zip(COLONNES, cellules_brutes):
                 enreg[f"{colonne}_brut"] = brut(cellule)
                 enreg[f"{colonne}_plat"] = aplatir(cellule)
+
+            # Ancre vide : un chiffre isolé dans la colonne No, sans aucun champ
+            # identifiant. On la REJETTE. Fabriquer un enregistrement à partir
+            # de là créerait un fantôme, et un fantôme est pire qu'un trou :
+            # un trou se voit dans la continuité des No, un fantôme ne se voit
+            # plus jamais.
+            #
+            # « Vide » se mesure sur les champs IDENTIFIANTS, car les deux
+            # fantômes observés sur mars 2026 ne sont pas littéralement vides :
+            # l'un porte du bruit OCR en COMMUNES (',. r;;,'), l'autre un
+            # STATUT seul. Ni un statut ni un nom de commune n'identifient un
+            # titre ; sans code, ni nom, ni détenteur, ni date, il n'y a pas
+            # d'enregistrement.
+            if not any(enreg[f"{c}_plat"] for c in COLONNES_IDENTIFIANTES):
+                rejets.append(
+                    {
+                        "page": page.page_number,
+                        "section": titre,
+                        "motif": "ancre vide : aucun champ identifiant "
+                                 "(code, nom, détenteur, dates)",
+                        "ligne": repr({c: enreg[f"{c}_plat"] for c in COLONNES
+                                       if enreg[f"{c}_plat"]}),
+                    }
+                )
+                continue
+
             enregistrements.append(finaliser(enreg))
 
     if nb_fusions:

@@ -124,34 +124,46 @@ Règles de lecture, à respecter à la lettre :
 Celle du projet est établie par lecture des éditions, et **elle peut s'allonger
 à chaque nouvelle édition**. Ce n'est pas un référentiel, c'est un relevé.
 
-Vocabulaire retenu à ce jour, arbitré par le mainteneur :
+Vocabulaire à ce jour — **six valeurs, toutes trouvées par observation** :
 
 | Valeur | Origine |
 |---|---|
 | `valide` | sources du mainteneur |
 | `En renouvellement` | sources du mainteneur |
 | `Suspendu` | sources du mainteneur |
-| `En cours de renonciation` | **découvert à l'extraction de mars 2026**, ne figurait dans aucune source du mainteneur |
+| `En cours de renonciation` | découvert à l'extraction de mars 2026 |
+| `En Renonciation` | découvert à l'extraction de mars 2026 (section 4, p31) |
+| `Retiré` | découvert à l'extraction de mars 2026 (section 4, p32) — prévu par le code minier |
 
-Valeurs rencontrées à l'extraction de mars 2026 mais **non retenues à ce jour**,
-donc signalées comme hors vocabulaire dans le rapport et jamais rapprochées
-d'une valeur connue :
+> **La liste n'est pas close.** Trois des six valeurs ont été découvertes en
+> lisant une seule édition. Rien ne garantit que la prochaine n'en apportera
+> pas d'autres. Cette table est un relevé daté, pas un référentiel.
 
-| Valeur observée | Occurrences | Remarque |
-|---|---|---|
-| `En Renonciation` | 1 (section 4, p31) | à ne pas confondre d'office avec `En cours de renonciation` — le rapprochement serait une interprétation |
-| `Retiré` | 1 (section 4, p32) | statut absent de toutes les sources connues |
+`En Renonciation` et `En cours de renonciation` recouvrent la même réalité
+d'après le mainteneur, mais sont conservées **comme deux valeurs distinctes** :
+les fondre serait interpréter, et la forme imprimée doit rester lisible.
 
 Conséquence pour l'implémentation : le vocabulaire est **fermé au moment de la
-lecture** — la normalisation ne rapproche une cellule que d'une valeur retenue,
-et tout le reste part au rapport sans être corrigé. Élargir la liste est une
-décision du mainteneur, jamais de l'extraction.
+lecture** — la normalisation ne rapproche une cellule que d'une valeur déjà
+retenue, et tout le reste part au rapport sans être corrigé. Élargir la liste
+est une décision du mainteneur, jamais de l'extraction.
 
 La mise en page éclate la cellule `STATUT` : « En » est imprimé au-dessus de
 « renouvellement », et l'OCR coupe les mots (`renouvellem ent`,
 `renouv E e n ll ement`). La normalisation compare donc les **lettres** de la
-cellule, sans tenir compte de l'ordre des mots ni de leur découpage. Le texte
-brut est conservé intact à côté, dans une colonne distincte.
+cellule, sans tenir compte de l'ordre des mots, de leur découpage, de la casse
+ni des accents. **La forme brute est conservée telle qu'imprimée** dans une
+colonne distincte : on doit pouvoir savoir ce que le document disait.
+
+### Ancres vides : un trou plutôt qu'un fantôme
+
+Une ligne peut porter un numéro d'ordre isolé sans aucun champ identifiant —
+ni code, ni nom, ni détenteur, ni date. Deux cas sur mars 2026 : l'un ne portait
+que du bruit OCR en `COMMUNES` (`,. r;;,`), l'autre un `STATUT` seul.
+
+**Ces lignes sont rejetées et signalées, jamais transformées en enregistrement.**
+Un fantôme dans les données est pire qu'un trou : un trou se voit dans la
+continuité des numéros d'ordre, un fantôme ne se voit plus jamais.
 
 ### La contrainte OCR — et l'OCR qui manque
 
