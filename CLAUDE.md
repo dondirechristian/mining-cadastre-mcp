@@ -12,27 +12,34 @@ septembre 2026.
 
 Mainteneur : SOTECHDI (Ouagadougou, Burkina Faso).
 
-## La découverte qui structure le projet
+## Périmètre v0.1 — un seul pays, une seule source
 
-La majorité des cadastres miniers africains tournent sur **Landfolio /
-FlexiCadastre** (éditeur : Spatial Dimension), qui s'appuie sur des
-**services ArcGIS REST**. Il existe donc une API interrogeable derrière
-chaque carte : endpoints `/query`, réponses JSON, filtrage et pagination.
+**Burkina Faso, à partir des listes de titres miniers valides publiées par le
+Ministère de l'Énergie, des Mines et des Carrières.** Rien d'autre.
 
-Conséquence : **un seul client ArcGIS couvre la majorité des pays.** Ce n'est
-pas dix intégrations, c'est une intégration plus deux cas particuliers.
+Ce sont des **documents publiés**, pas un service interrogeable : la v0.1 les
+récupère, les lit et les restitue. L'URL et le format réels sont fournis par le
+mainteneur — ils ne se devinent pas.
 
-| Pays | Plateforme | Point d'entrée connu |
-|---|---|---|
-| Côte d'Ivoire | Landfolio | portals.landfolio.com/CoteDIvoire |
-| Togo | Landfolio | cadastreminier.tg |
-| Guinée | Landfolio | guinee.cadastreminier.org |
-| RDC | Landfolio | drclicences.cami.cd |
-| Sénégal | Landfolio | à localiser |
-| Burkina Faso | spécifique | ecadastreminier.bf + geoportail.bumigeb.bf |
-| Mali | MCAS | référentiel en ligne bilingue FR/EN |
+Détail de la source dans `docs/SOURCES.md`.
 
-Détail des sources dans `docs/SOURCES.md`.
+### Landfolio est écarté
+
+L'hypothèse de départ était qu'un seul client ArcGIS couvrirait la majorité des
+pays, Landfolio / FlexiCadastre reposant sur des services ArcGIS REST.
+
+Vérification faite sur **Côte d'Ivoire, Guinée et Kenya** : les services ArcGIS
+publics ne contiennent que des **couches de contexte**. Les titres miniers sont
+dans un **dossier non listé, protégé par jeton**, atteignable seulement via le
+proxy du portail. **On n'y touche pas** — ce serait sortir de « ce qu'un citoyen
+peut consulter librement en ligne ».
+
+Conséquence : il n'y a pas de socle technique commun. Pas de client ArcGIS, pas
+de table de correspondance multi-pays, pas de sondage de portail. Ces pays
+restent au tableau de `docs/SOURCES.md` pour mémoire, pas comme piste de travail.
+
+Une deuxième juridiction viendra après la v0.1, à partir de ce que son ministère
+publie réellement — le Mali est le candidat n°1.
 
 ## Stack imposée — ne pas proposer d'alternative
 
@@ -48,6 +55,8 @@ Nom du serveur : `mining_cadastre_mcp`.
 
 ## Les trois outils de la v0.1 — liste figée
 
+Inchangée. Le périmètre géographique se réduit, pas la surface d'outils.
+
 | Outil | Rôle | readOnly |
 |---|---|---|
 | `cadastre_list_jurisdictions` | Pays couverts, plateforme, statut de couverture | oui |
@@ -61,6 +70,9 @@ dans `docs/BACKLOG.md` et continue.
 
 Les trois outils sont en lecture seule. Ce serveur ne modifie jamais rien.
 
+`cadastre_list_jurisdictions` reste dans la liste avec une seule juridiction
+couverte : c'est lui qui dit à l'agent ce qui est couvert et ce qui ne l'est pas.
+
 ## Règles de travail
 
 1. **Un outil à la fois, un commit par outil.**
@@ -69,7 +81,9 @@ Les trois outils sont en lecture seule. Ce serveur ne modifie jamais rien.
    partir de la réponse observée, jamais d'une supposition.
 3. **Tu exécutes ce que tu écris.** `py_compile` ne suffit pas : lance le serveur
    et vérifie qu'il répond au handshake avant de dire que c'est fini.
-4. **Pas de dépendance ajoutée** sans me demander.
+4. **Pas de dépendance ajoutée** sans me demander. Lire un PDF ou un XLSX
+   demande une bibliothèque : c'est une question à poser, pas une décision à
+   prendre.
 5. Si une étape te bloque, arrête-toi et pose la question. Ne contourne pas en
    inventant une valeur ou en simulant une réponse.
 
@@ -86,11 +100,16 @@ Les trois outils sont en lecture seule. Ce serveur ne modifie jamais rien.
    qu'un pays entre en production.
 4. **Citer la source et la date dans chaque réponse d'outil.** Un titre minier a
    des conséquences juridiques et financières. Toute réponse doit indiquer d'où
-   vient la donnée et quand elle a été lue.
+   vient la donnée et quand elle a été lue. Pour une liste publiée, citer aussi
+   **la date de publication de la liste**, distincte de la date de lecture.
 5. **Ne jamais présenter la donnée comme faisant foi.** Le registre officiel est
    la seule référence opposable. Les descriptions d'outils doivent le dire.
 6. **Aucune interprétation.** Le serveur restitue, il ne qualifie pas. Pas de
    « permis suspect », pas de score, pas de rapprochement entre sociétés.
+7. **Aucun accès protégé.** Pas de jeton, pas de proxy de portail, pas de
+   contournement d'authentification. Si une donnée n'est pas accessible en clair
+   à un visiteur, elle est hors périmètre — définitivement, pas jusqu'à ce qu'on
+   trouve un moyen.
 
 ## Conventions de code
 
@@ -102,20 +121,26 @@ Les trois outils sont en lecture seule. Ce serveur ne modifie jamais rien.
 - Messages d'erreur actionnables : dire ce qui a échoué et quoi faire ensuite.
 - Toute fonction d'I/O est `async`.
 
-## Spécificités ArcGIS à ne pas sous-estimer
+## Spécificités de la source à ne pas sous-estimer
 
-- **`maxRecordCount`** plafonne les résultats, souvent à 1000 ou 2000. Toute
-  requête doit paginer avec `resultOffset` et `resultRecordCount`.
-- **Noms de champs hétérogènes** d'un pays à l'autre. Prévoir une table de
-  correspondance par juridiction, pas un schéma unique supposé.
-- **Disponibilité variable.** Ces portails tombent. Timeout court, message clair,
-  jamais de plantage du serveur MCP.
-- **Ne pas marteler les services.** Un portail public ministériel n'est pas
-  dimensionné pour un agent en boucle. Limiter le débit.
+- **Le format n'est pas connu et ne se suppose pas.** PDF, XLSX, CSV, page HTML :
+  tant que le mainteneur n'a pas fourni le fichier réel, rien ne se parse.
+- **Les noms de colonnes sont ceux du document**, pas un schéma inventé. Les
+  relever sur le fichier réel.
+- **Une liste est datée.** Elle est valable à sa date de publication, pas
+  aujourd'hui. Ne jamais laisser croire qu'une réponse reflète l'état du jour.
+- **Une nouvelle liste remplace la précédente** sans forcément suivre le même
+  gabarit. Le parseur doit échouer clairement plutôt que d'interpréter de
+  travers.
+- **Disponibilité variable.** Un site ministériel tombe. Timeout court, message
+  clair, jamais de plantage du serveur MCP.
+- **Ne pas marteler le site.** Un portail public ministériel n'est pas
+  dimensionné pour un agent en boucle. Limiter le débit, et préférer une lecture
+  du fichier déjà téléchargé.
 
 ## Définition du « terminé » pour la v0.1
 
-- [ ] Les trois outils répondent sur au moins deux juridictions
+- [ ] Les trois outils répondent sur le Burkina Faso
 - [ ] Handshake MCP vérifié en exécution réelle
 - [ ] `evals/questions.xml` : 10 questions vérifiées contre le serveur
 - [ ] `docs/SOURCES.md` complet, colonne CGU renseignée
@@ -124,6 +149,7 @@ Les trois outils sont en lecture seule. Ce serveur ne modifie jamais rien.
 
 ## Hors périmètre v0.1
 
-Recherche géospatiale, historisation SQLite, détection de chevauchements,
-alertes d'expiration, données de production, rapports ITIE, pays hors Afrique
-de l'Ouest. Tout cela va dans `docs/BACKLOG.md`.
+Tout pays autre que le Burkina Faso. Landfolio et tout accès ArcGIS. Recherche
+géospatiale, historisation SQLite, détection de chevauchements, alertes
+d'expiration, données de production, rapports ITIE. Tout cela va dans
+`docs/BACKLOG.md`.
