@@ -12,7 +12,7 @@ l'Énergie, des Mines et des Carrières du Burkina Faso.
 
 | Pays | Source | Point d'entrée | Format | CGU lues | Statut |
 |---|---|---|---|---|---|
-| Burkina Faso | Listes de titres valides publiées par la DGCM | ecadastreminier.bf | PDF scanné + OCR | oui — voir réserve ci-dessous | source unique v0.1 |
+| Burkina Faso | Listes de titres valides publiées par la DGCM | ecadastreminier.bf | PDF scanné, OCR selon les éditions | oui — voir réserve ci-dessous | source unique v0.1 |
 | Côte d'Ivoire | Landfolio | portals.landfolio.com/CoteDIvoire | — | — | **écarté** |
 | Guinée | Landfolio | guinee.cadastreminier.org | — | — | **écarté** |
 | Togo | Landfolio | cadastreminier.tg | — | — | **écarté** |
@@ -53,7 +53,7 @@ concerné publie effectivement.
 | Autorité | Direction générale du cadastre minier (DGCM), MEMC |
 | Page de publication | https://www.ecadastreminier.bf/ |
 | Dépôt des fichiers | `wp-content/uploads/AAAA/MM/` |
-| Format | **PDF scanné, passé à l'OCR** — pas un PDF texte natif |
+| Format | **PDF scanné, couche texte OCR présente sur certaines éditions seulement** — voir ci-dessous |
 | Périodicité | trimestrielle : 31 mars, 30 juin, 31 octobre, 31 décembre |
 | Délai de parution | quelques jours à quelques semaines après la date d'arrêt |
 | Nature juridique | actes administratifs publiés (arrêtés) |
@@ -118,13 +118,41 @@ Règles de lecture, à respecter à la lettre :
 | `DATE D'OCTROI`, `DATE D'EXPIRATION` | Format `JJ/MM/AAAA`. |
 | `PROVINCES`, `COMMUNES` | Peuvent porter plusieurs valeurs séparées par `/` ou `,`. Conserver **la chaîne brute ET une version découpée**. |
 
-### La contrainte OCR
+### La contrainte OCR — et l'OCR qui manque
 
-Le document est un **scan passé à la reconnaissance de caractères**. Le texte
-extrait est donc le produit d'un OCR, pas une donnée saisie : il porte des
-erreurs de lecture, en nombre inconnu à ce stade.
+Les documents sont des **scans**. Quand une couche texte existe, elle est le
+produit d'une reconnaissance de caractères, pas une donnée saisie : elle porte
+des erreurs de lecture.
 
-Cela pèse directement sur les règles de domaine du projet :
+**Mais la couche texte n'est pas présente sur toutes les éditions.** Vérifié
+avec pdfplumber le 20 septembre 2026 :
+
+| Édition | Pages | Pages avec couche texte | Caractères | `Producer` observé |
+|---|---|---|---|---|
+| 30 juin 2025 | 43 | **43 / 43** | 49 139 | `Adobe Acrobat Pro (64-bit) 24 Paper Capture Plug-in` |
+| 31 mars 2026 | 45 | **45 / 45** | 46 036 | `Adobe Acrobat Pro (64-bit) 24 Paper Capture Plug-in` |
+| 30 juin 2026 | 46 | **0 / 46** | **0** | `HP Scan Extended Application` |
+
+L'édition du **30 juin 2026 n'a aucune couche texte** : 46 pages, 46 images,
+zéro caractère. `extract_tables()` n'y détecte rien. Sur l'édition de mars 2026,
+`Creator` vaut `HP Scan` mais `Producer` vaut Paper Capture — le module OCR
+d'Acrobat.
+
+> **Interprétation, pas constat.** La lecture la plus simple de ces métadonnées
+> est que l'OCR est une étape manuelle côté DGCM, appliquée aux éditions
+> précédentes et omise sur celle de juin 2026. Ce n'est qu'une interprétation :
+> rien ne permet de savoir ce qui s'est passé dans leur chaîne de publication,
+> ni si une version OCRisée sera republiée.
+
+Conséquences, arbitrées le 20 septembre 2026 :
+
+- **La v0.1 s'appuie sur l'édition du 31 mars 2026**, la plus récente qui soit
+  exploitable. Juin 2026 est traité comme une anomalie, pas comme le cas nominal.
+- **Pas de Tesseract.** Une édition sur quatre sans couche texte ne justifie pas
+  d'engager une dépendance système. `scripts/extract_titres.py` détecte l'absence
+  de couche texte, s'arrête, et dit pourquoi.
+
+Le bruit OCR, lui, reste entier là où la couche existe :
 
 - une erreur d'OCR sur un `CODE` ou sur une date **ne se corrige pas
   silencieusement** — la règle « aucune interprétation » l'interdit ;
@@ -156,12 +184,18 @@ Candidat n°1 pour la deuxième juridiction, une fois le Burkina Faso livré.
 
 ## Ce qui reste à faire
 
-1. **Extraction des tableaux du PDF** — étape suivante. Le choix de la
-   bibliothèque est une dépendance nouvelle, donc un arbitrage du mainteneur.
-2. **Vérifier la structure sur l'édition de juin 2026**, et non seulement sur
-   celle de juin 2025 : neuf listes, mêmes colonnes, mêmes valeurs de statut.
-3. **Mesurer le taux d'erreur OCR** sur un échantillon, pour savoir ce que les
-   réponses d'outil doivent annoncer.
+1. **Nettoyage du bruit OCR** — étape suivante. L'extraction est écrite
+   (`scripts/extract_titres.py`) et ne corrige rien volontairement : 384 lignes
+   sorties sur l'édition de mars 2026, dont 203 portent au moins un champ
+   signalé comme suspect, et 22 lignes d'en-tête ont absorbé des données
+   d'enregistrement. Le traitement de ce bruit se décide au vu du rapport
+   d'extraction, pas avant.
+2. **Mesurer le taux d'erreur OCR réel** sur un échantillon relu à la main.
+   Les compteurs de l'extraction mesurent la géométrie et le format, pas la
+   justesse d'un nom ou d'un code.
+3. **Surveiller si la DGCM republie une version OCRisée de juin 2026.** Si les
+   éditions suivantes arrivent sans couche texte, la question Tesseract se
+   reposera — elle n'est pas tranchée, seulement repoussée.
 4. **Décider du comportement entre deux éditions** : la v0.1 sert la dernière
-   liste publiée. Le suivi des changements d'une édition à l'autre relève de
+   liste exploitable. Le suivi des changements d'une édition à l'autre relève de
    l'historisation, donc de la v0.2.
