@@ -2,6 +2,11 @@
 samples/
 *.response.json
 
+# Listes de titres téléchargées depuis le site de la DGCM.
+# Volumineuses (~5 Mo par édition) et redécouvrables avec
+# scripts/fetch_titres.py — jamais versionnées.
+data/
+
 # Configuration locale
 .env
 .env.*

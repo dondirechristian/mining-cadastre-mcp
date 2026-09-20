@@ -2,16 +2,17 @@
 
 Recherche initiale le 19 septembre 2026. Périmètre révisé le 20 septembre 2026
 après vérification des services ArcGIS publics de trois portails Landfolio.
+Source burkinabè caractérisée le 20 septembre 2026.
 
 La v0.1 repose sur **une seule source** : les listes de titres miniers valides
-publiées par le Ministère de l'Énergie, des Mines et des Carrières du Burkina
-Faso.
+publiées par la Direction générale du cadastre minier (DGCM), Ministère de
+l'Énergie, des Mines et des Carrières du Burkina Faso.
 
 ## Tableau de couverture
 
-| Pays | Source | Point d'entrée | Format relevé | CGU lues | Statut |
+| Pays | Source | Point d'entrée | Format | CGU lues | Statut |
 |---|---|---|---|---|---|
-| Burkina Faso | Listes de titres valides publiées par le MEMC | à renseigner | non | non | source unique v0.1 |
+| Burkina Faso | Listes de titres valides publiées par la DGCM | ecadastreminier.bf | PDF scanné + OCR | oui — voir réserve ci-dessous | source unique v0.1 |
 | Côte d'Ivoire | Landfolio | portals.landfolio.com/CoteDIvoire | — | — | **écarté** |
 | Guinée | Landfolio | guinee.cadastreminier.org | — | — | **écarté** |
 | Togo | Landfolio | cadastreminier.tg | — | — | **écarté** |
@@ -45,50 +46,104 @@ concerné publie effectivement.
 
 ## Burkina Faso — source unique de la v0.1
 
-Le Ministère de l'Énergie, des Mines et des Carrières publie **des listes datées
-de titres miniers valides**. Ce sont des documents publiés, pas un service
-interrogeable : la v0.1 les récupère, les lit et les restitue telles quelles.
+### Publication
 
-Catégories attendues dans ces listes :
-
-- permis d'exploitation industrielle de mines ;
-- permis d'exploitation industrielle de carrières ;
-- autorisations de recherche et de prospection ;
-- autorisations d'exploitation artisanale et semi-mécanisée.
-
-Éléments à établir avant d'écrire la moindre ligne de client :
-
-| Point | Statut |
+| | |
 |---|---|
-| URL de la page de publication | **à fournir par le mainteneur** |
-| URL du dernier fichier publié | **à fournir par le mainteneur** |
-| Format du fichier (PDF, XLSX, CSV, HTML) | **à fournir par le mainteneur** |
-| Périodicité de publication | inconnue |
-| Noms de colonnes réels | inconnus — à relever sur le fichier réel |
-| Valeurs possibles du champ statut | inconnues |
-| Format des dates (octroi, expiration) | inconnu |
-| Conditions d'utilisation du site | **non lues** |
+| Autorité | Direction générale du cadastre minier (DGCM), MEMC |
+| Page de publication | https://www.ecadastreminier.bf/ |
+| Dépôt des fichiers | `wp-content/uploads/AAAA/MM/` |
+| Format | **PDF scanné, passé à l'OCR** — pas un PDF texte natif |
+| Périodicité | trimestrielle : 31 mars, 30 juin, 31 octobre, 31 décembre |
+| Délai de parution | quelques jours à quelques semaines après la date d'arrêt |
+| Nature juridique | actes administratifs publiés (arrêtés) |
 
-Tant que la colonne « CGU lues » est à **non**, le Burkina Faso ne passe pas en
-production. C'est la règle de domaine n°3, elle n'a pas changé avec le périmètre.
+Le site est un WordPress. Chaque édition fait l'objet d'un **article** portant le
+lien du PDF, ce qui rend la détection des nouvelles éditions fiable via l'API
+REST :
 
-`scripts/fetch_titres.py` sert à récupérer le fichier publié et à décrire ce
-qu'il contient. Il ne présume aucun format : il est complété une fois l'URL et
-le format réels connus.
+```
+https://www.ecadastreminier.bf/wp-json/wp/v2/posts?search=titres+miniers+valides
+```
 
-### Contexte réglementaire
+Relevé le 20 septembre 2026 — 4 éditions exposées :
 
-Le code minier burkinabè a été refondu par la **loi n°016-2024/ALT du 18 juillet
-2024**. Les catégories de titres et leur nomenclature sont donc récentes : ne pas
-les rapprocher d'anciennes listes sans vérification.
+| Édition | Article publié le | Nom du fichier PDF |
+|---|---|---|
+| 30 juin 2026 | 2026-07-10 | `Titres_Miniers_valides_au_30_juin_2026 (1) (1).pdf` |
+| 31 mars 2026 | 2026-04-11 | `LISTE DES TITRES MINIERS VALIDES AU 31 MARS 2026.pdf` |
+| 31 décembre 2025 | 2026-01-12 | `Liste des TM valides au 31 décembre 2025.pdf` |
+| 31 octobre 2025 | 2025-11-12 | `LISTE DES TM VALIDES AU 31 OCTOBRE 2025.pdf` |
 
-### Autres sources burkinabè — connues, non retenues en v0.1
+**Le nom de fichier n'est pas normalisé** : quatre éditions, quatre conventions
+différentes — casse, abréviation « TM », séparateurs, accents, et un suffixe de
+ré-upload `(1) (1)` sur l'édition de juin 2026. **Une URL d'édition ne se
+construit donc jamais à partir d'une date.** Elle se découvre par l'API REST.
+C'est ce que fait `scripts/fetch_titres.py`.
 
-- `ecadastreminier.bf` — Direction générale du cadastre minier. Procédures et
-  catégories de titres. Pas identifié à ce jour comme fournissant une liste
-  téléchargeable de titres ; à réexaminer après la v0.1.
-- `geoportail.bumigeb.bf` — géoportail géologique et minier du BUMIGEB. Données
-  géologiques, pas un registre de titres.
+L'édition du **30 juin 2026** — la plus récente — a été téléchargée et vérifiée :
+5 559 802 octets (5,30 Mo), PDF 1.7 linéarisé, `sha256`
+`3909307b9539c05b3f98c28d982d22d2eb4eb3faf553ec623fc6ad553bde8fdb`.
+
+L'édition de référence sur laquelle la structure ci-dessous a été **vérifiée par
+le mainteneur** est celle du 30 juin 2025.
+
+### Structure du document
+
+Un **seul PDF contient neuf listes**, chacune sous son propre numéro d'arrêté :
+
+1. Autorisations d'exploitation artisanale de substances de carrières
+2. Autorisations d'exploitation artisanale de substances de mines
+3. Autorisations de prospection
+4. Autorisations de recherche de gîte de substances de carrières
+5. Permis d'exploitation industrielle de mines
+6. Permis d'exploitation industrielle permanente de substances de carrières
+7. Permis d'exploitation semi-mécanisée de substances de carrières
+8. Permis d'exploitation semi-mécanisée de substances de mines
+9. Permis de recherche
+
+Colonnes **identiques dans les neuf listes** :
+
+```
+No | CODE | NOM | STATUT | DETENTEUR | DATE D'OCTROI | DATE D'EXPIRATION
+   | PROVINCES | COMMUNES
+```
+
+Règles de lecture, à respecter à la lettre :
+
+| Champ | Règle |
+|---|---|
+| `CODE` | Identifiant numérique **stable entre éditions**. C'est la clé de jointure. **Ne jamais le reconstruire ni le normaliser.** |
+| `STATUT` | Trois valeurs : `valide`, `En renouvellement`, `Suspendu`. Casse telle quelle dans le document. |
+| `DATE D'OCTROI`, `DATE D'EXPIRATION` | Format `JJ/MM/AAAA`. |
+| `PROVINCES`, `COMMUNES` | Peuvent porter plusieurs valeurs séparées par `/` ou `,`. Conserver **la chaîne brute ET une version découpée**. |
+
+### La contrainte OCR
+
+Le document est un **scan passé à la reconnaissance de caractères**. Le texte
+extrait est donc le produit d'un OCR, pas une donnée saisie : il porte des
+erreurs de lecture, en nombre inconnu à ce stade.
+
+Cela pèse directement sur les règles de domaine du projet :
+
+- une erreur d'OCR sur un `CODE` ou sur une date **ne se corrige pas
+  silencieusement** — la règle « aucune interprétation » l'interdit ;
+- la règle « ne jamais présenter la donnée comme faisant foi » vaut ici deux
+  fois : à l'écart habituel entre une liste publiée et le registre s'ajoute
+  l'incertitude de reconnaissance ;
+- les réponses d'outil devront le dire explicitement.
+
+### Conditions d'utilisation
+
+Le site ne porte **pas de mention restrictive identifiée**. Les listes sont des
+actes administratifs publiés par la DGCM dans un objectif déclaré de transparence
+et de traçabilité.
+
+> **Réserve explicite.** Cette lecture est celle du mainteneur, confirmée par lui
+> le 20 septembre 2026. Ce n'est **pas une licence explicite** : aucun texte du
+> site n'accorde formellement un droit de rediffusion. L'absence de mention
+> restrictive n'est pas une autorisation écrite. À revoir si le site publie des
+> conditions d'utilisation.
 
 ## Mali — hors périmètre v0.1
 
@@ -99,14 +154,14 @@ conforte la légitimité de la consultation, sans valoir licence de rediffusion.
 
 Candidat n°1 pour la deuxième juridiction, une fois le Burkina Faso livré.
 
-## Ce qui reste à faire avant d'écrire du code
+## Ce qui reste à faire
 
-1. **Obtenir l'URL de publication et le format réel** du dernier fichier de
-   titres valides du MEMC. Rien ne se code avant.
-2. **Lire les conditions d'utilisation** du site de publication. Un objectif de
-   transparence affiché n'est pas une licence de rediffusion.
-3. **Relever les noms de colonnes réels** sur le fichier téléchargé, et les
-   valeurs effectivement présentes dans le champ statut.
-4. **Établir la périodicité** de publication et la manière dont une nouvelle
-   liste remplace la précédente — c'est ce qui déterminera plus tard la
-   stratégie d'historisation (v0.2).
+1. **Extraction des tableaux du PDF** — étape suivante. Le choix de la
+   bibliothèque est une dépendance nouvelle, donc un arbitrage du mainteneur.
+2. **Vérifier la structure sur l'édition de juin 2026**, et non seulement sur
+   celle de juin 2025 : neuf listes, mêmes colonnes, mêmes valeurs de statut.
+3. **Mesurer le taux d'erreur OCR** sur un échantillon, pour savoir ce que les
+   réponses d'outil doivent annoncer.
+4. **Décider du comportement entre deux éditions** : la v0.1 sert la dernière
+   liste publiée. Le suivi des changements d'une édition à l'autre relève de
+   l'historisation, donc de la v0.2.
