@@ -94,6 +94,18 @@ NB_BORNES = 10            # 9 colonnes
 ECART_LIGNE = 5.0         # au-delà, deux mots sont sur deux lignes visuelles
 MARGE_BOITE = 3.0         # tolérance sur la boîte du tableau
 
+# Stratégie (b) — sans traits. Paramètres mesurés sur l'édition de décembre 2025
+# avant d'être codés, jamais ajustés après coup pour faire passer un fichier.
+# « DATE » est imprimé DANS l'empan de « D'OCTROI » (écart -39 pt) : la fusion
+# ne doit donc jouer que sur des empans qui se chevauchent. Toute tolérance
+# positive avalerait une vraie séparation — sur la page 33 de décembre 2025,
+# « D'EXPIRATION » et « PROVINCES » ne sont séparés que de 8,7 pt.
+FUSION_LIBELLE = 0.0
+MARGE_COLONNE = 8.0       # débord de part et d'autre du 1er et du dernier libellé
+FENETRE_ENTETE = 20.0     # les libellés tiennent sur 3 lignes, y=250 à y=265
+MINI_LIBELLES = 5         # en deçà, la ligne n'est pas la ligne d'en-tête
+ECART_PIED_PAGE = 30.0    # mesuré : 37 à 45 pt entre dernière donnée et « Page N »
+
 
 def aplatir(valeur: str | None) -> str:
     if valeur is None:
@@ -236,6 +248,107 @@ def boite_tableau(traits: list[dict]) -> tuple[float, float]:
     )
 
 
+def ligne_entete_y(page) -> float | None:
+    """Ordonnée de la ligne d'en-tête, repérée par son contenu.
+
+    Pas par une bande fixe : l'en-tête ministériel des pages d'ouverture de
+    section repousse les libellés à 43 % de la hauteur, contre 13 % sur les
+    pages courantes. C'est donc la ligne portant le PLUS de libellés qui sert
+    de repère, où qu'elle se trouve.
+    """
+    mots = sorted(page.extract_words(), key=lambda w: w["top"])
+    if not mots:
+        return None
+
+    groupes: list[list[dict]] = []
+    for mot in mots:
+        if groupes and mot["top"] - groupes[-1][-1]["top"] <= ECART_LIGNE:
+            groupes[-1].append(mot)
+        else:
+            groupes.append([mot])
+
+    meilleure, score = None, 0
+    for groupe in groupes:
+        compte = sum(1 for m in groupe if _est_mot_entete(m["text"]))
+        if compte > score:
+            meilleure, score = groupe, compte
+    if meilleure is None or score < MINI_LIBELLES:
+        return None
+    return min(m["top"] for m in meilleure)
+
+
+def bornes_par_entete(page, y_entete: float) -> list[float] | None:
+    """Stratégie (b) : bornes déduites des libellés d'en-tête, sans aucun trait.
+
+    Sur l'édition de décembre 2025, la page ne porte aucun objet vectoriel —
+    `lines`, `rects` et `curves` sont vides, la grille est dans l'image. Les
+    neuf libellés, eux, sont présents et stables en abscisse d'une page à
+    l'autre. Ils servent donc d'ancrage, comme les traits servent en (a).
+
+    Les libellés tiennent sur trois lignes — « DATE DATE » au-dessus, les sept
+    autres au milieu, « D'OCTROI D'EXPIRATION » en dessous — d'où la fenêtre
+    autour de `y_entete`. Elle écarte aussi le titre de section, qui contient
+    « DATE » dans « A LA DATE DU 31/12/2025 » et fausserait le découpage.
+
+    « DATE » est imprimé au-dessus de « D'OCTROI » : leurs empans se
+    chevauchent et sont fusionnés en un seul libellé.
+
+    Rend None si les neuf libellés ne ressortent pas — la page est alors
+    rejetée, jamais devinée.
+    """
+    mots = [
+        w for w in page.extract_words()
+        if _est_mot_entete(w["text"]) and abs(w["top"] - y_entete) <= FENETRE_ENTETE
+    ]
+    if not mots:
+        return None
+
+    empans: list[list[float]] = []
+    for mot in sorted(mots, key=lambda w: w["x0"]):
+        if empans and mot["x0"] - empans[-1][1] <= FUSION_LIBELLE:
+            empans[-1][1] = max(empans[-1][1], mot["x1"])
+        else:
+            empans.append([mot["x0"], mot["x1"]])
+
+    if len(empans) != len(COLONNES):
+        return None
+
+    bornes = [empans[0][0] - MARGE_COLONNE]
+    for precedent, suivant in zip(empans, empans[1:]):
+        bornes.append((precedent[1] + suivant[0]) / 2)
+    bornes.append(empans[-1][1] + MARGE_COLONNE)
+    return bornes
+
+
+def bande_sans_traits(page, y_entete: float) -> tuple[float, float] | None:
+    """Étendue verticale du tableau quand aucun trait ne la donne.
+
+    Le haut est la ligne d'en-tête elle-même : tout ce qui la précède est
+    l'en-tête ministériel et le titre de section, qui n'appartiennent pas au
+    tableau.
+
+    Le bas s'obtient en retirant les lignes isolées du pied de page : le
+    « Page N » est séparé de la dernière donnée par 37 à 45 pt, contre 5 à
+    15 pt entre deux lignes du tableau. Sans ce retrait, le pied de page se
+    rattacherait au dernier enregistrement et polluerait sa colonne COMMUNES.
+    """
+    mots = sorted(page.extract_words(), key=lambda w: w["top"])
+    if not mots:
+        return None
+
+    sommets: list[float] = []
+    for mot in mots:
+        if not sommets or mot["top"] - sommets[-1] > ECART_LIGNE:
+            sommets.append(mot["top"])
+
+    while len(sommets) >= 2 and sommets[-1] - sommets[-2] > ECART_PIED_PAGE:
+        sommets.pop()
+
+    bas = sommets[-1] + MARGE_BOITE
+    haut = y_entete - MARGE_BOITE
+    return (haut, bas) if bas > haut else None
+
+
 def lignes_visuelles(page, bornes: list[float], haut: float, bas: float) -> list[dict]:
     """Regroupe les mots en lignes visuelles, puis chaque mot dans sa colonne."""
     mots = [
@@ -352,21 +465,38 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
     for page in pdf.pages:
         section = section_de_page(sections, page.page_number)
         titre = section["titre_brut"] if section else ""
+        # Cascade de stratégies, essayées dans l'ordre. Chaque enregistrement
+        # portera celle qui a servi : un utilisateur doit pouvoir savoir d'où
+        # vient la donnée qu'il lit.
+        #   (a) traits    — couche texte + traits verticaux, la plus fiable
+        #   (b) abscisses — couche texte sans traits, ancrage sur les libellés
+        #   (c) ocr       — non implémentée
         traits = traits_verticaux(page)
         bornes = bornes_colonnes(traits)
+        strategie, boite = "traits", None
 
-        if len(bornes) != NB_BORNES:
-            rejets.append(
-                {
-                    "page": page.page_number,
-                    "section": titre,
-                    "motif": f"{len(bornes)} bornes de colonnes au lieu de {NB_BORNES}",
-                    "ligne": repr([round(b) for b in bornes]),
-                }
-            )
-            continue
+        if len(bornes) == NB_BORNES:
+            boite = boite_tableau(traits)
+        else:
+            y_entete = ligne_entete_y(page)
+            bornes_b = bornes_par_entete(page, y_entete) if y_entete is not None else None
+            boite_b = bande_sans_traits(page, y_entete) if bornes_b else None
+            if bornes_b and boite_b:
+                strategie, bornes, boite = "abscisses", bornes_b, boite_b
+            else:
+                rejets.append(
+                    {
+                        "page": page.page_number,
+                        "section": titre,
+                        "motif": f"aucune stratégie applicable : {len(bornes)} bornes par "
+                                 f"les traits, "
+                                 f"{len(bornes_b) if bornes_b else 0} par les libellés",
+                        "ligne": repr([round(b) for b in bornes]),
+                    }
+                )
+                continue
 
-        haut, bas = boite_tableau(traits)
+        haut, bas = boite
         lignes = lignes_visuelles(page, bornes, haut, bas)
 
         # Les en-têtes répétés sont des lignes à part entière : écartées en tant
@@ -413,6 +543,7 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
                 "section_titre": titre,
                 "page": page.page_number,
                 "methode": "position",
+                "strategie": strategie,
             }
             for colonne, cellule in zip(COLONNES, cellules_brutes):
                 enreg[f"{colonne}_brut"] = brut(cellule)
@@ -513,6 +644,7 @@ def extraire_par_tables(pdf, sections) -> tuple[list[dict], list[dict]]:
                     "section_titre": titre,
                     "page": page.page_number,
                     "methode": "tables",
+                    "strategie": "extract_tables",
                 }
                 for colonne, cellule in zip(COLONNES, cellules):
                     enreg[f"{colonne}_brut"] = brut(cellule)
@@ -566,7 +698,7 @@ def champs_suspects(enreg: dict) -> list[str]:
 # --------------------------------------------------------------------------
 
 def colonnes_csv() -> list[str]:
-    entetes = ["section_ordre", "section_titre", "page", "methode"]
+    entetes = ["section_ordre", "section_titre", "page", "methode", "strategie"]
     for colonne in COLONNES:
         entetes += [f"{colonne}_brut", f"{colonne}_plat"]
         if colonne == "statut":
@@ -641,6 +773,12 @@ def rapport_methode(dire, titre, sections, enregistrements, rejets) -> None:
     dire(f"lignes rejetées  : {b['rejets']}")
     dire(f"lignes suspectes : {b['suspectes']} / {b['lignes']}  ({b['taux']:.1f} %)")
     dire(f"numéros manquants dans la suite : {b['manquants']}   doublons : {b['doublons']}")
+
+    parts = Counter(e.get("strategie", "?") for e in enregistrements)
+    if parts:
+        dire("\nstratégie ayant servi :")
+        for nom, nombre in parts.most_common():
+            dire(f"  {nombre:>4}  {nom}")
 
     dire("\ncontinuité des numéros d'ordre (mesure des lignes perdues) :")
     for ordre, c in b["continuite"]["sections"].items():

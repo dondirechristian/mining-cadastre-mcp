@@ -17,18 +17,54 @@ mainteneur. Total : **cinq éditions**, pas six.
 
 ## Résultats
 
-| Édition | Pages | `Producer` | Couche texte | Traits vectoriels | Lignes | Manquants | Doublons | Suspectes | % |
-|---|---|---|---|---|---|---|---|---|---|
-| 30 juin 2025 | 43 | Acrobat Paper Capture | oui | oui | **421** | 1 | 0 | 16 | **3,8 %** |
-| 31 octobre 2025 | 45 | `cairo 1.18.0` | **non** | — | — | — | — | — | — |
-| 31 décembre 2025 | 46 | *(absent)* | oui | **aucun** | **0** | — | — | — | — |
-| 31 mars 2026 | 45 | Acrobat Paper Capture | oui | oui | **383** | 3 | 0 | 6 | **1,6 %** |
-| 30 juin 2026 | 46 | `HP Scan Extended Application` | **non** | — | — | — | — | — | — |
+| Édition | Pages | `Producer` | Couche texte | Traits vectoriels | Stratégie | Lignes | Manquants | Doublons | Suspectes | % |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 30 juin 2025 | 43 | Acrobat Paper Capture | oui | oui | (a) traits | **421** | 1 | 0 | 16 | **3,8 %** |
+| 31 octobre 2025 | 45 | `cairo 1.18.0` | **non** | — | *(c) à écrire* | — | — | — | — | — |
+| 31 décembre 2025 | 46 | *(absent)* | oui | **aucun** | (b) abscisses | **391** | 1 | 0 | 13 | **3,3 %** |
+| 31 mars 2026 | 45 | Acrobat Paper Capture | oui | oui | (a) traits | **383** | 3 | 0 | 6 | **1,6 %** |
+| 30 juin 2026 | 46 | `HP Scan Extended Application` | **non** | — | *(c) à écrire* | — | — | — | — | — |
 
-**Deux éditions sur cinq sont exploitables.** Les trois autres échouent pour
-trois causes distinctes, et chacune échoue bruyamment.
+**Trois éditions sur cinq sont exploitables** depuis l'ajout de la stratégie (b).
+Les deux restantes n'ont aucune couche texte et attendent la stratégie (c).
 
-## Les trois échecs
+## La cascade de stratégies
+
+Les stratégies sont essayées dans l'ordre, page par page. Chaque enregistrement
+porte dans sa colonne `strategie` celle qui a servi : **un utilisateur doit
+pouvoir savoir si une donnée vient du texte d'origine ou d'un OCR refait.**
+
+| Stratégie | Condition | État |
+|---|---|---|
+| `traits` | couche texte + traits verticaux | écrite — la plus fiable |
+| `abscisses` | couche texte, aucun trait ; ancrage sur les libellés d'en-tête | écrite |
+| `ocr` | aucune couche texte ; OCR complet de l'image | **non écrite** |
+
+### Stratégie (b) — ancrage sur les libellés d'en-tête
+
+La page de décembre 2025 ne porte aucun objet vectoriel, mais ses neuf libellés
+d'en-tête sont présents et stables en abscisse. Les bornes de colonnes se
+déduisent du milieu de l'écart entre deux libellés consécutifs.
+
+Trois points mesurés avant d'être codés :
+
+- **La ligne d'en-tête se repère par son contenu, pas par une bande fixe.** Sur
+  les pages courantes elle est à 13 % de la hauteur ; sur les pages d'ouverture
+  de section, l'en-tête ministériel la repousse à 43 %. C'est la ligne portant
+  le plus de libellés qui sert de repère, où qu'elle se trouve.
+- **La fenêtre autour de cette ligne écarte le titre de section**, qui contient
+  « DATE » dans « A LA DATE DU 31/12/2025 » et fausserait le découpage.
+- **La fusion des libellés ne joue que sur des empans qui se chevauchent.**
+  « DATE » est imprimé *dans* l'empan de « D'OCTROI » (écart −39 pt). Toute
+  tolérance positive avalerait une vraie séparation : sur la page 33,
+  « D'EXPIRATION » et « PROVINCES » ne sont distants que de 8,7 pt.
+
+Le pied de page est retiré par son isolement vertical — 37 à 45 pt le séparent
+de la dernière donnée, contre 5 à 15 pt entre deux lignes du tableau. Sans ce
+retrait, il se rattacherait au dernier enregistrement et polluerait sa colonne
+`COMMUNES`.
+
+## Les deux échecs restants
 
 ### 31 octobre 2025 et 30 juin 2026 — aucune couche texte
 
@@ -40,25 +76,31 @@ Capture, HP Scan, cairo — ce qui confirme que la chaîne de publication de la
 DGCM n'est pas stabilisée. L'octobre 2025 pèse **72,86 Mo**, contre 5 à 26 Mo
 pour les autres.
 
-### 31 décembre 2025 — du texte, mais aucun objet vectoriel
+## 31 décembre 2025 — résolu par la stratégie (b)
 
-Cas le plus instructif. La couche texte est présente et dense — 770 à 1 129
-caractères par page, 128 à 180 mots. Mais sur chaque page :
+La couche texte est présente et dense — 770 à 1 129 caractères par page, 128 à
+180 mots — mais chaque page porte `lines = 0`, `rects = 0`, `curves = 0` : la
+grille du tableau est dans l'image, pas dessinée en vecteurs. `extract_tables()`
+rend zéro table, et la stratégie (a) zéro borne.
+
+La stratégie (b) en sort **391 lignes, 1 numéro manquant, 0 doublon, 13 lignes
+suspectes (3,3 %)**, réparties sur les neuf sections.
+
+Le seul numéro manquant est le `No=1` de la section 7. Le seul rejet est une
+ancre vide, écartée par construction.
+
+Le bruit OCR de cette édition a une signature propre : des fragments du pied
+de page migrent dans les cellules de la dernière ligne de chaque page.
 
 ```
-lines = 0    rects = 0    curves = 0    images = 1
-extract_tables() = 0
+date d'octroi     : '13/03/2025 Directeur Général'
+date d'octroi     : '13/01/2023 dës1 duMérite• SE?'
+date d'expiration : "D'EXPlRATION 30/12/2026"
+statut            : 'Il Valide'      statut : 'I En renouvellement'
+code              : '3751 SIB'
 ```
 
-**La grille du tableau est dans l'image, pas dessinée en vecteurs.** La méthode
-`position` dérive ses colonnes des traits verticaux : sans traits, zéro borne,
-et les 46 pages sont rejetées avec le motif `0 bornes de colonnes au lieu de 10`.
-`extract_tables()` échoue identiquement, pour la même raison.
-
-Ce n'est donc pas une régression de la méthode par position : aucune des deux
-méthodes ne peut lire cette édition en l'état. Une troisième approche —
-regroupement des mots par abscisse, sans traits — serait nécessaire. Elle n'est
-pas écrite, et ne le sera pas sans arbitrage.
+Aucune de ces valeurs n'a été corrigée.
 
 ## L'ordre des sections change d'une édition à l'autre
 
