@@ -33,12 +33,18 @@ USAGE
 
 import argparse
 import csv
+import os
 import re
+import time
 import unicodedata
 from collections import Counter
 from pathlib import Path
 
 import pdfplumber
+
+# Chemin de l'exécutable Tesseract, si absent du PATH. Sur Windows il n'y est
+# pas toujours : TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+TESSERACT_CMD = os.environ.get("TESSERACT_CMD", "")
 
 COLONNES = [
     "no",
@@ -105,6 +111,13 @@ MARGE_COLONNE = 8.0       # débord de part et d'autre du 1er et du dernier libe
 FENETRE_ENTETE = 20.0     # les libellés tiennent sur 3 lignes, y=250 à y=265
 MINI_LIBELLES = 5         # en deçà, la ligne n'est pas la ligne d'en-tête
 ECART_PIED_PAGE = 30.0    # mesuré : 37 à 45 pt entre dernière donnée et « Page N »
+
+# Stratégie (c) — OCR. Ne réinvente aucun découpage : Tesseract rend chaque mot
+# avec sa boîte englobante, exactement ce que consomme (b).
+RESOLUTION_OCR = 300      # points par pouce du rendu envoyé à Tesseract
+LANGUE_OCR = "fra"
+SEUIL_CONFIANCE = 60.0    # en deçà, le champ passe en suspect — jamais corrigé
+CONFIANCE_TEXTE = 100.0   # une couche texte d'origine n'a pas de confiance OCR
 
 
 def aplatir(valeur: str | None) -> str:
@@ -178,10 +191,14 @@ def verifier_couche_texte(pdf, chemin: Path) -> None:
     )
 
 
-def reperer_sections(pdf) -> list[dict]:
+def reperer_sections(pdf, cache: dict | None = None, avec_ocr: bool = False) -> list[dict]:
     sections = []
     for page in pdf.pages:
-        lignes = [l.strip() for l in (page.extract_text() or "").splitlines()]
+        lignes = (
+            lignes_texte(page, cache, avec_ocr)
+            if cache is not None
+            else [l.strip() for l in (page.extract_text() or "").splitlines()]
+        )
         for i, ligne in enumerate(lignes):
             if not MOTIF_SECTION.match(ligne):
                 continue
@@ -248,7 +265,130 @@ def boite_tableau(traits: list[dict]) -> tuple[float, float]:
     )
 
 
-def ligne_entete_y(page) -> float | None:
+def mots_du_texte(page) -> list[dict]:
+    """Mots de la couche texte d'origine, au format commun aux trois stratégies."""
+    mots = page.extract_words()
+    for mot in mots:
+        mot["conf"] = CONFIANCE_TEXTE
+    return mots
+
+
+def mots_ocr(page, resolution: int = RESOLUTION_OCR) -> list[dict]:
+    """Stratégie (c) : rend la page en image et l'OCRise, avec les positions.
+
+    Le rendu passe par `to_image()`, que pdfplumber embarque déjà — donc pas de
+    poppler ni de pdf2image, aucune seconde dépendance système.
+
+    `image_to_data` rend chaque mot avec sa boîte englobante et sa confiance.
+    Les boîtes sont en pixels du rendu : elles sont ramenées en points PDF pour
+    que la suite du traitement soit exactement celle de (b).
+
+    La confiance est conservée mot par mot. Elle ne corrige rien : elle fait
+    passer un champ en suspect.
+    """
+    try:
+        import pytesseract  # importé ici : inutile tant qu'aucune page n'en a besoin
+    except ImportError:
+        raise SystemExit(
+            "pytesseract n'est pas installé.\n"
+            "  pip install pytesseract\n"
+            "C'est la liaison Python ; le moteur Tesseract lui-même est un "
+            "prérequis système, à installer séparément avec la langue « fra »."
+        )
+
+    if TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+
+    image = page.to_image(resolution=resolution).original
+    echelle = 72.0 / resolution
+    try:
+        donnees = pytesseract.image_to_data(
+            image, lang=LANGUE_OCR, output_type=pytesseract.Output.DICT
+        )
+    except (pytesseract.TesseractNotFoundError, OSError):
+        raise SystemExit(
+            f"Tesseract est introuvable (commande essayée : "
+            f"{pytesseract.pytesseract.tesseract_cmd!r}).\n\n"
+            "La stratégie OCR en a besoin : c'est un prérequis SYSTÈME, pas une\n"
+            "bibliothèque Python. Sur Windows il n'est pas ajouté au PATH par\n"
+            "défaut. Indiquer son chemin :\n\n"
+            '    set TESSERACT_CMD=C:\\Program Files\\Tesseract-OCR\\tesseract.exe\n\n'
+            "Vérifier aussi que la langue « fra » est installée :\n"
+            "    tesseract --list-langs\n\n"
+            "Pour extraire sans OCR — les pages sans couche texte seront alors\n"
+            "rejetées, pas devinées :\n"
+            "    python scripts/extract_titres.py <pdf> --sans-ocr"
+        )
+    except pytesseract.TesseractError as exc:
+        raise SystemExit(
+            f"Tesseract a échoué : {exc}\n"
+            f"Vérifier que la langue {LANGUE_OCR!r} est installée : tesseract --list-langs"
+        )
+
+    mots = []
+    for i, texte in enumerate(donnees["text"]):
+        if not texte.strip():
+            continue
+        try:
+            conf = float(donnees["conf"][i])
+        except (TypeError, ValueError):
+            conf = -1.0
+        if conf < 0:
+            continue
+        gauche, haut = donnees["left"][i], donnees["top"][i]
+        mots.append(
+            {
+                "text": texte,
+                "x0": gauche * echelle,
+                "x1": (gauche + donnees["width"][i]) * echelle,
+                "top": haut * echelle,
+                "bottom": (haut + donnees["height"][i]) * echelle,
+                "conf": conf,
+            }
+        )
+    return mots
+
+
+def cache_ocr_neuf() -> dict:
+    """Mémoire des pages déjà océrisées. Une page n'est OCRisée qu'une fois,
+    et le même résultat sert au repérage des sections et à l'extraction."""
+    return {"mots": {}, "duree": 0.0, "pages": 0}
+
+
+def mots_ocr_caches(page, cache: dict) -> list[dict]:
+    numero = page.page_number
+    if numero not in cache["mots"]:
+        debut = time.perf_counter()
+        cache["mots"][numero] = mots_ocr(page)
+        cache["duree"] += time.perf_counter() - debut
+        cache["pages"] += 1
+    return cache["mots"][numero]
+
+
+def lignes_de_mots(mots: list[dict]) -> list[str]:
+    """Reconstitue des lignes de texte à partir de mots positionnés."""
+    groupes: list[list[dict]] = []
+    for mot in sorted(mots, key=lambda w: (w["top"], w["x0"])):
+        if groupes and mot["top"] - groupes[-1][-1]["top"] <= ECART_LIGNE:
+            groupes[-1].append(mot)
+        else:
+            groupes.append([mot])
+    return [
+        " ".join(m["text"] for m in sorted(g, key=lambda w: w["x0"])) for g in groupes
+    ]
+
+
+def lignes_texte(page, cache: dict, avec_ocr: bool) -> list[str]:
+    """Lignes de texte de la page : couche d'origine, ou OCR si elle est vide."""
+    lignes = [l.strip() for l in (page.extract_text() or "").splitlines()]
+    if any(lignes):
+        return lignes
+    if not avec_ocr:
+        return []
+    return lignes_de_mots(mots_ocr_caches(page, cache))
+
+
+def ligne_entete_y(mots: list[dict]) -> float | None:
     """Ordonnée de la ligne d'en-tête, repérée par son contenu.
 
     Pas par une bande fixe : l'en-tête ministériel des pages d'ouverture de
@@ -256,7 +396,7 @@ def ligne_entete_y(page) -> float | None:
     pages courantes. C'est donc la ligne portant le PLUS de libellés qui sert
     de repère, où qu'elle se trouve.
     """
-    mots = sorted(page.extract_words(), key=lambda w: w["top"])
+    mots = sorted(mots, key=lambda w: w["top"])
     if not mots:
         return None
 
@@ -277,7 +417,7 @@ def ligne_entete_y(page) -> float | None:
     return min(m["top"] for m in meilleure)
 
 
-def bornes_par_entete(page, y_entete: float) -> list[float] | None:
+def bornes_par_entete(mots: list[dict], y_entete: float) -> list[float] | None:
     """Stratégie (b) : bornes déduites des libellés d'en-tête, sans aucun trait.
 
     Sur l'édition de décembre 2025, la page ne porte aucun objet vectoriel —
@@ -296,15 +436,15 @@ def bornes_par_entete(page, y_entete: float) -> list[float] | None:
     Rend None si les neuf libellés ne ressortent pas — la page est alors
     rejetée, jamais devinée.
     """
-    mots = [
-        w for w in page.extract_words()
+    libelles = [
+        w for w in mots
         if _est_mot_entete(w["text"]) and abs(w["top"] - y_entete) <= FENETRE_ENTETE
     ]
-    if not mots:
+    if not libelles:
         return None
 
     empans: list[list[float]] = []
-    for mot in sorted(mots, key=lambda w: w["x0"]):
+    for mot in sorted(libelles, key=lambda w: w["x0"]):
         if empans and mot["x0"] - empans[-1][1] <= FUSION_LIBELLE:
             empans[-1][1] = max(empans[-1][1], mot["x1"])
         else:
@@ -320,7 +460,7 @@ def bornes_par_entete(page, y_entete: float) -> list[float] | None:
     return bornes
 
 
-def bande_sans_traits(page, y_entete: float) -> tuple[float, float] | None:
+def bande_sans_traits(mots: list[dict], y_entete: float) -> tuple[float, float] | None:
     """Étendue verticale du tableau quand aucun trait ne la donne.
 
     Le haut est la ligne d'en-tête elle-même : tout ce qui la précède est
@@ -332,12 +472,12 @@ def bande_sans_traits(page, y_entete: float) -> tuple[float, float] | None:
     15 pt entre deux lignes du tableau. Sans ce retrait, le pied de page se
     rattacherait au dernier enregistrement et polluerait sa colonne COMMUNES.
     """
-    mots = sorted(page.extract_words(), key=lambda w: w["top"])
-    if not mots:
+    ordonnes = sorted(mots, key=lambda w: w["top"])
+    if not ordonnes:
         return None
 
     sommets: list[float] = []
-    for mot in mots:
+    for mot in ordonnes:
         if not sommets or mot["top"] - sommets[-1] > ECART_LIGNE:
             sommets.append(mot["top"])
 
@@ -349,17 +489,23 @@ def bande_sans_traits(page, y_entete: float) -> tuple[float, float] | None:
     return (haut, bas) if bas > haut else None
 
 
-def lignes_visuelles(page, bornes: list[float], haut: float, bas: float) -> list[dict]:
-    """Regroupe les mots en lignes visuelles, puis chaque mot dans sa colonne."""
-    mots = [
-        w for w in page.extract_words()
+def lignes_visuelles(
+    mots: list[dict], bornes: list[float], haut: float, bas: float
+) -> list[dict]:
+    """Regroupe les mots en lignes visuelles, puis chaque mot dans sa colonne.
+
+    Consomme une liste de mots, d'où qu'elle vienne : couche texte d'origine
+    ou Tesseract. C'est ce qui permet à (c) de ne rien réinventer.
+    """
+    retenus = [
+        w for w in mots
         if bornes[0] <= (w["x0"] + w["x1"]) / 2 < bornes[-1] and haut <= w["top"] <= bas
     ]
-    mots.sort(key=lambda w: (w["top"], w["x0"]))
+    retenus.sort(key=lambda w: (w["top"], w["x0"]))
 
     groupes: list[list[dict]] = []
     courant: list[dict] = []
-    for mot in mots:
+    for mot in retenus:
         if courant and mot["top"] - courant[-1]["top"] > ECART_LIGNE:
             groupes.append(courant)
             courant = []
@@ -370,17 +516,20 @@ def lignes_visuelles(page, bornes: list[float], haut: float, bas: float) -> list
     lignes = []
     for groupe in groupes:
         cellules: list[list[str]] = [[] for _ in COLONNES]
+        confiances: list[list[float]] = [[] for _ in COLONNES]
         for mot in sorted(groupe, key=lambda w: w["x0"]):
             centre = (mot["x0"] + mot["x1"]) / 2
             for i in range(len(COLONNES)):
                 if bornes[i] <= centre < bornes[i + 1]:
                     cellules[i].append(mot["text"])
+                    confiances[i].append(mot.get("conf", CONFIANCE_TEXTE))
                     break
         lignes.append(
             {
                 "y": min(m["top"] for m in groupe),
                 "cellules_mots": cellules,
                 "cellules": [" ".join(c) for c in cellules],
+                "confiances": confiances,
                 "mots": [m["text"] for m in groupe],
             }
         )
@@ -413,9 +562,16 @@ def separer_entete(ligne: dict) -> tuple[bool, dict | None]:
     if nb_entete == len(mots):
         return True, None
 
-    cellules_mots = [
-        [m for m in cellule if not _est_mot_entete(m)] for cellule in ligne["cellules_mots"]
-    ]
+    cellules_mots: list[list[str]] = []
+    confiances: list[list[float]] = []
+    for cellule, confs in zip(ligne["cellules_mots"], ligne["confiances"]):
+        gardes = [
+            (m, c) for m, c in zip(cellule, confs + [CONFIANCE_TEXTE] * len(cellule))
+            if not _est_mot_entete(m)
+        ]
+        cellules_mots.append([m for m, _ in gardes])
+        confiances.append([c for _, c in gardes])
+
     restants = [m for cellule in cellules_mots for m in cellule]
     if not restants:
         return True, None
@@ -423,6 +579,7 @@ def separer_entete(ligne: dict) -> tuple[bool, dict | None]:
         "y": ligne["y"],
         "cellules_mots": cellules_mots,
         "cellules": [" ".join(c) for c in cellules_mots],
+        "confiances": confiances,
         "mots": restants,
     }
 
@@ -457,10 +614,14 @@ def rattacher(lignes: list[dict], ancres: list[int]) -> dict[int, list[int]]:
     return attaches
 
 
-def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
+def extraire_par_position(
+    pdf, sections, avec_ocr: bool = True, cache: dict | None = None
+) -> tuple[list[dict], list[dict]]:
     enregistrements: list[dict] = []
     rejets: list[dict] = []
     nb_fusions = 0
+    if cache is None:
+        cache = cache_ocr_neuf()
 
     for page in pdf.pages:
         section = section_de_page(sections, page.page_number)
@@ -471,6 +632,7 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
         #   (a) traits    — couche texte + traits verticaux, la plus fiable
         #   (b) abscisses — couche texte sans traits, ancrage sur les libellés
         #   (c) ocr       — non implémentée
+        mots = mots_du_texte(page)
         traits = traits_verticaux(page)
         bornes = bornes_colonnes(traits)
         strategie, boite = "traits", None
@@ -478,26 +640,34 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
         if len(bornes) == NB_BORNES:
             boite = boite_tableau(traits)
         else:
-            y_entete = ligne_entete_y(page)
-            bornes_b = bornes_par_entete(page, y_entete) if y_entete is not None else None
-            boite_b = bande_sans_traits(page, y_entete) if bornes_b else None
-            if bornes_b and boite_b:
-                strategie, bornes, boite = "abscisses", bornes_b, boite_b
-            else:
+            strategie, bornes, boite = "abscisses", None, None
+            for tentative, source in (("abscisses", mots), ("ocr", None)):
+                if source is None:
+                    if not avec_ocr:
+                        break
+                    source = mots_ocr_caches(page, cache)
+                y_entete = ligne_entete_y(source)
+                candidat = bornes_par_entete(source, y_entete) if y_entete is not None else None
+                bande = bande_sans_traits(source, y_entete) if candidat else None
+                if candidat and bande:
+                    strategie, bornes, boite, mots = tentative, candidat, bande, source
+                    break
+
+            if bornes is None or boite is None:
                 rejets.append(
                     {
                         "page": page.page_number,
                         "section": titre,
-                        "motif": f"aucune stratégie applicable : {len(bornes)} bornes par "
-                                 f"les traits, "
-                                 f"{len(bornes_b) if bornes_b else 0} par les libellés",
-                        "ligne": repr([round(b) for b in bornes]),
+                        "motif": "aucune stratégie applicable : ni traits, ni libellés "
+                                 f"dans la couche texte{'' if avec_ocr else ', OCR désactivé'}"
+                                 f"{', ni après OCR' if avec_ocr else ''}",
+                        "ligne": repr({"traits": len(bornes_colonnes(traits))}),
                     }
                 )
                 continue
 
         haut, bas = boite
-        lignes = lignes_visuelles(page, bornes, haut, bas)
+        lignes = lignes_visuelles(mots, bornes, haut, bas)
 
         # Les en-têtes répétés sont des lignes à part entière : écartées en tant
         # que telles, sans rien absorber. Ce ne sont PAS des rejets — les
@@ -534,9 +704,12 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
         for ancre in ancres:
             indices = sorted([ancre] + attaches[ancre], key=lambda i: corps[i]["y"])
             cellules_brutes = []
+            confiances_min = []
             for colonne in range(len(COLONNES)):
                 morceaux = [corps[i]["cellules"][colonne] for i in indices]
                 cellules_brutes.append("\n".join(m for m in morceaux if m.strip()))
+                confs = [c for i in indices for c in corps[i]["confiances"][colonne]]
+                confiances_min.append(min(confs) if confs else None)
 
             enreg = {
                 "section_ordre": section["ordre"] if section else 0,
@@ -545,9 +718,10 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
                 "methode": "position",
                 "strategie": strategie,
             }
-            for colonne, cellule in zip(COLONNES, cellules_brutes):
+            for colonne, cellule, conf in zip(COLONNES, cellules_brutes, confiances_min):
                 enreg[f"{colonne}_brut"] = brut(cellule)
                 enreg[f"{colonne}_plat"] = aplatir(cellule)
+                enreg[f"{colonne}_conf"] = conf
 
             # Ancre vide : un chiffre isolé dans la colonne No, sans aucun champ
             # identifiant. On la REJETTE. Fabriquer un enregistrement à partir
@@ -578,6 +752,12 @@ def extraire_par_position(pdf, sections) -> tuple[list[dict], list[dict]]:
 
     if nb_fusions:
         print(f"[position] {nb_fusions} lignes mêlant en-tête et données ont été découpées")
+    if cache["pages"]:
+        print(
+            f"[ocr] {cache['pages']} pages océrisées en {cache['duree']:.1f} s "
+            f"({cache['duree'] / cache['pages']:.2f} s/page, "
+            f"{LANGUE_OCR}, {RESOLUTION_OCR} ppp)"
+        )
     return enregistrements, rejets
 
 
@@ -665,6 +845,9 @@ def finaliser(enreg: dict) -> dict:
     vit dans une colonne à part.
     """
     enreg["statut_normalise"] = normaliser_statut(enreg["statut_plat"]) or ""
+    confs = [enreg.get(f"{c}_conf") for c in COLONNES]
+    presentes = [c for c in confs if c is not None]
+    enreg["conf_min"] = round(min(presentes), 1) if presentes else ""
     suspects = champs_suspects(enreg)
     enreg["suspects"] = " | ".join(suspects)
     enreg["nb_suspects"] = len(suspects)
@@ -690,6 +873,13 @@ def champs_suspects(enreg: dict) -> list[str]:
         elif set(valeur) & CARACTERES_SUSPECTS:
             parasites = "".join(sorted(set(valeur) & CARACTERES_SUSPECTS))
             suspects.append(f"{colonne} contient {parasites!r}")
+
+    # Confiance OCR : un mot mal reconnu fait passer son champ en suspect.
+    # La valeur n'est jamais corrigée pour autant.
+    for colonne in COLONNES:
+        conf = enreg.get(f"{colonne}_conf")
+        if conf is not None and conf < SEUIL_CONFIANCE:
+            suspects.append(f"confiance OCR faible sur {colonne}: {conf:.0f}")
     return suspects
 
 
@@ -700,10 +890,10 @@ def champs_suspects(enreg: dict) -> list[str]:
 def colonnes_csv() -> list[str]:
     entetes = ["section_ordre", "section_titre", "page", "methode", "strategie"]
     for colonne in COLONNES:
-        entetes += [f"{colonne}_brut", f"{colonne}_plat"]
+        entetes += [f"{colonne}_brut", f"{colonne}_plat", f"{colonne}_conf"]
         if colonne == "statut":
             entetes.append("statut_normalise")
-    return entetes + ["nb_suspects", "suspects"]
+    return entetes + ["conf_min", "nb_suspects", "suspects"]
 
 
 def ecrire_csv(dossier: Path, sections, enregistrements) -> Path:
@@ -811,6 +1001,10 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("data/extraction"))
     parser.add_argument("--methode", choices=("position", "tables"), default="position")
     parser.add_argument("--comparer", action="store_true", help="Exécute les deux méthodes")
+    parser.add_argument(
+        "--sans-ocr", action="store_true",
+        help="Désactive la stratégie (c) : les pages sans couche texte sont rejetées",
+    )
     args = parser.parse_args()
 
     if not args.pdf.exists():
@@ -823,19 +1017,30 @@ def main() -> None:
         lignes_rapport.append(ligne)
 
     with pdfplumber.open(args.pdf) as pdf:
-        verifier_couche_texte(pdf, args.pdf)
-        sections = reperer_sections(pdf)
+        avec_ocr = not args.sans_ocr
+        sans_texte = sum(len(page.chars) for page in pdf.pages) == 0
+        if sans_texte and not avec_ocr:
+            verifier_couche_texte(pdf, args.pdf)
+
+        cache = cache_ocr_neuf()
+        sections = reperer_sections(pdf, cache, avec_ocr)
 
         dire("=" * 78)
         dire(f"EXTRACTION — {args.pdf.name}")
         dire(f"pages : {len(pdf.pages)}  |  sections repérées : {len(sections)}")
+        if sans_texte:
+            producer = (pdf.metadata or {}).get("Producer", "(non déclaré)")
+            dire(f"AUCUNE COUCHE TEXTE (Producer = {producer!r}) — la stratégie OCR prend")
+            dire("le relais. Les valeurs proviennent d'une reconnaissance, pas du document.")
         dire("=" * 78)
 
         resultats = {}
         methodes = ("position", "tables") if args.comparer else (args.methode,)
         for methode in methodes:
-            fonction = extraire_par_position if methode == "position" else extraire_par_tables
-            resultats[methode] = fonction(pdf, sections)
+            if methode == "position":
+                resultats[methode] = extraire_par_position(pdf, sections, avec_ocr, cache)
+            else:
+                resultats[methode] = extraire_par_tables(pdf, sections)
 
     for methode, (enregistrements, rejets) in resultats.items():
         dossier = args.out / methode if args.comparer else args.out

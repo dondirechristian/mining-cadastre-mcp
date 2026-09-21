@@ -38,7 +38,39 @@ pouvoir savoir si une donnée vient du texte d'origine ou d'un OCR refait.**
 |---|---|---|
 | `traits` | couche texte + traits verticaux | écrite — la plus fiable |
 | `abscisses` | couche texte, aucun trait ; ancrage sur les libellés d'en-tête | écrite |
-| `ocr` | aucune couche texte ; OCR complet de l'image | **non écrite** |
+| `ocr` | aucune couche texte ; OCR complet de l'image | écrite, **jamais exécutée** — voir ci-dessous |
+
+### Stratégie (c) — OCR, et son prérequis système
+
+(c) ne réinvente aucun découpage. `image_to_data` rend chaque mot avec sa boîte
+englobante : exactement ce que consomme (b). La page est rendue avec `to_image()`
+que pdfplumber embarque déjà — **ni poppler ni pdf2image**, aucune seconde
+dépendance système. Mesuré : 0,11 à 0,16 s par page à 300 ppp.
+
+Chaque mot conserve sa **confiance Tesseract**. Sous le seuil, le champ passe en
+suspect ; la valeur n'est jamais corrigée. Les colonnes `<champ>_conf` et
+`conf_min` accompagnent chaque enregistrement.
+
+> **Prérequis système : Tesseract, avec la langue `fra`.** Ce n'est pas une
+> bibliothèque Python. `pytesseract` n'en est que la liaison. Sur Windows,
+> l'exécutable n'est pas ajouté au `PATH` par défaut ; le chemin se donne par
+> la variable d'environnement `TESSERACT_CMD`.
+>
+> ```
+> set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+> tesseract --list-langs      # doit lister « fra »
+> ```
+>
+> `--sans-ocr` désactive la stratégie : les pages sans couche texte sont alors
+> rejetées, pas devinées.
+
+**État de vérification.** La conversion des coordonnées pixels → points et le
+filtrage des mots sans confiance sont testés. La cascade complète — bascule vers
+`ocr`, repérage des sections depuis les mots océrisés, propagation des confiances,
+colonnes CSV — est vérifiée de bout en bout avec une source de mots substituée.
+**L'appel à Tesseract lui-même n'a jamais été exécuté** : le moteur est absent de
+la machine de développement. Les chiffres de juin 2026 et d'octobre 2025 restent
+donc inconnus.
 
 ### Stratégie (b) — ancrage sur les libellés d'en-tête
 
@@ -101,6 +133,24 @@ code              : '3751 SIB'
 ```
 
 Aucune de ces valeurs n'a été corrigée.
+
+### Défaut connu — le pied de page migre dans les cellules
+
+Le retrait du pied de page par isolement vertical élimine la ligne « Page N »,
+mais **pas le bloc de signature du Directeur Général**, qui est plus proche du
+tableau que le seuil de 30 pt. Ses fragments se rattachent au dernier
+enregistrement de la page et polluent ses cellules :
+
+```
+date d'octroi : '13/03/2025 Directeur Général'
+date d'octroi : '13/01/2023 dës1 duMérite• SE?'
+```
+
+**Laissé en l'état, délibérément.** Le défaut est détecté — ces champs
+ressortent tous dans les lignes suspectes — donc rien ne passe en silence. Le
+corriger demanderait soit un seuil plus agressif, qui couperait de vraies
+lignes, soit une reconnaissance du bloc de signature par son contenu, donc une
+interprétation.
 
 ## L'ordre des sections change d'une édition à l'autre
 
