@@ -20,13 +20,15 @@ mainteneur. Total : **cinq éditions**, pas six.
 | Édition | Pages | `Producer` | Couche texte | Traits vectoriels | Stratégie | Lignes | Manquants | Doublons | Suspectes | % |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 30 juin 2025 | 43 | Acrobat Paper Capture | oui | oui | (a) traits | **421** | 1 | 0 | 16 | **3,8 %** |
-| 31 octobre 2025 | 45 | `cairo 1.18.0` | **non** | — | *(c) à écrire* | — | — | — | — | — |
+| 31 octobre 2025 | 45 | `cairo 1.18.0` | **non** | — | *(c) non exécutée* | — | — | — | — | — |
 | 31 décembre 2025 | 46 | *(absent)* | oui | **aucun** | (b) abscisses | **391** | 1 | 0 | 13 | **3,3 %** |
 | 31 mars 2026 | 45 | Acrobat Paper Capture | oui | oui | (a) traits | **383** | 3 | 0 | 6 | **1,6 %** |
-| 30 juin 2026 | 46 | `HP Scan Extended Application` | **non** | — | *(c) à écrire* | — | — | — | — | — |
+| 30 juin 2026 | 46 | `HP Scan Extended Application` | **non** | — | (c) ocr | 116 | 172 | 0 | 114 | **98,3 %** |
 
-**Trois éditions sur cinq sont exploitables** depuis l'ajout de la stratégie (b).
-Les deux restantes n'ont aucune couche texte et attendent la stratégie (c).
+**Trois éditions sur cinq sont exploitables** — celles qui ont une couche texte.
+Les deux autres n'en ont aucune : la stratégie (c) les fait passer par l'OCR,
+mais son rendement reste trop faible pour être utilisable (98,3 % de lignes
+suspectes sur juin 2026, 35 pages rejetées sur 46).
 
 ## La cascade de stratégies
 
@@ -38,7 +40,7 @@ pouvoir savoir si une donnée vient du texte d'origine ou d'un OCR refait.**
 |---|---|---|
 | `traits` | couche texte + traits verticaux | écrite — la plus fiable |
 | `abscisses` | couche texte, aucun trait ; ancrage sur les libellés d'en-tête | écrite |
-| `ocr` | aucune couche texte ; OCR complet de l'image | écrite, **jamais exécutée** — voir ci-dessous |
+| `ocr` | aucune couche texte ; OCR complet de l'image | écrite et exécutée — rendement faible, voir ci-dessous |
 
 ### Stratégie (c) — OCR, et son prérequis système
 
@@ -64,13 +66,65 @@ suspect ; la valeur n'est jamais corrigée. Les colonnes `<champ>_conf` et
 > `--sans-ocr` désactive la stratégie : les pages sans couche texte sont alors
 > rejetées, pas devinées.
 
-**État de vérification.** La conversion des coordonnées pixels → points et le
-filtrage des mots sans confiance sont testés. La cascade complète — bascule vers
-`ocr`, repérage des sections depuis les mots océrisés, propagation des confiances,
-colonnes CSV — est vérifiée de bout en bout avec une source de mots substituée.
-**L'appel à Tesseract lui-même n'a jamais été exécuté** : le moteur est absent de
-la machine de développement. Les chiffres de juin 2026 et d'octobre 2025 restent
-donc inconnus.
+### Résultat réel sur juin 2026 — la stratégie tourne, le rendement est mauvais
+
+Tesseract 5.4.0 avec `fra`, 300 ppp, 46 pages.
+
+```
+OCR              : 124,1 s   (2,70 s/page)
+durée totale     : 125,3 s
+lignes extraites : 116, toutes marquées « ocr »
+pages rejetées   : 35 sur 46
+numéros manquants: 172
+lignes suspectes : 114 / 116  (98,3 %)
+```
+
+**L'OCR lit correctement le corps du tableau.** Exemple brut d'une ligne de
+données reconnue :
+
+```
+16  4342  TiFORODO  SOLEIL MINING SA  21/05/2024  20/05/2027  BOUSSOU-KOULA
+```
+
+**Ce qui échoue, c'est l'ancrage.** (c) délègue le découpage à (b), qui déduit
+les bornes des neuf libellés d'en-tête. Ces libellés sont en petits caractères
+en haut d'une page scannée, et l'OCR les mutile :
+
+```
+p3  : 'N° = CODE DETENTEUR: PROVINCES COMMUNES'        -> 5 libellés sur 9
+p26 : 'És SLATUT, 4| R RE REUEEIE ... D'OCTROI DATE'   -> STATUT lu « SLATUT »
+p37 : 'STATUT DETENTEUR D'OCTROI DATE D'EXPIRATION ...' -> N°, CODE, NOM absents
+```
+
+**Seules 11 pages sur 46 rendent les neuf libellés.** Les 35 autres en rendent
+4 à 10, et sont rejetées plutôt que devinées.
+
+Conséquence architecturale : **(c) hérite de la fragilité de (b) précisément là
+où l'OCR est le plus faible.** Ancrer le découpage sur du texte reconnu revient
+à faire dépendre la structure de la qualité de reconnaissance du plus petit
+texte de la page.
+
+Sur les 11 pages qui passent, les bornes varient de 22 à 35 pt — bien au-delà
+des 9 pt de dérive mesurés en (a). Une borne médiane de document n'est donc pas
+utilisable telle quelle.
+
+Trois pistes, non tranchées :
+
+1. **Réutiliser les bornes d'une page voisine qui passe**, la géométrie étant
+   stable à l'intérieur d'une section. Demande de traiter la dérive de scan.
+2. **Déduire les bornes des lignes de données** par regroupement en abscisse,
+   sans dépendre de l'en-tête. Le corps est mieux reconnu que l'en-tête.
+3. **Rapprochement approché des libellés** — « SLATUT » vers « STATUT ». C'est
+   une correction au jugé sur l'ancrage ; à considérer avec méfiance.
+
+### État de vérification
+
+Testés : la conversion pixels → points, le filtrage des mots sans confiance, la
+cascade complète, le repérage des sections depuis les mots océrisés, la
+propagation des confiances et les colonnes CSV. La stratégie tourne de bout en
+bout sur juin 2026.
+
+Non mesuré : l'édition du 31 octobre 2025, qui pèse 72,86 Mo.
 
 ### Stratégie (b) — ancrage sur les libellés d'en-tête
 
@@ -96,12 +150,13 @@ de la dernière donnée, contre 5 à 15 pt entre deux lignes du tableau. Sans ce
 retrait, il se rattacherait au dernier enregistrement et polluerait sa colonne
 `COMMUNES`.
 
-## Les deux échecs restants
+## Les deux éditions sans couche texte
 
-### 31 octobre 2025 et 30 juin 2026 — aucune couche texte
+### 31 octobre 2025 et 30 juin 2026
 
-Le script s'arrête avant toute extraction, avec son message dédié. Rien à
-tirer de ces fichiers sans OCR.
+Sans OCR — avec `--sans-ocr` — le script s'arrête avant toute extraction, avec
+son message dédié. Avec l'OCR, la stratégie (c) prend le relais, pour le
+rendement décrit plus haut.
 
 Trois producteurs différents apparaissent selon les éditions — Acrobat Paper
 Capture, HP Scan, cairo — ce qui confirme que la chaîne de publication de la
