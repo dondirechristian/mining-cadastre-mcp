@@ -28,6 +28,21 @@ Tout ce qui est hors périmètre v0.1. Claude Code écrit ici au lieu de coder.
   trimestriel qu'on télécharge une fois et qu'on relit. Il n'y a pas de portail
   à ménager à chaque requête.
 
+## Besoin exprimé, non satisfaisable par la source actuelle
+
+- **Distinguer l'or du manganèse.** Demandé par le mainteneur le 24 septembre
+  2026. **Impossible depuis les listes de la DGCM** : leurs neuf colonnes
+  (`No, CODE, NOM, STATUT, DETENTEUR, DATE D'OCTROI, DATE D'EXPIRATION,
+  PROVINCES, COMMUNES`) ne portent pas la substance. Les titres de section ne
+  séparent que les substances **de mines** de celles **de carrières**.
+  La v0.1 fait donc porter la recherche sur la catégorie de titre, et le dit
+  dans la description de l'outil et dans `cadastre_list_jurisdictions`.
+  Pistes pour y répondre plus tard, aucune vérifiée :
+  - les arrêtés d'octroi eux-mêmes, qui nomment la substance — à localiser ;
+  - les rapports ITIE Burkina, qui recoupent société et substance ;
+  - le géoportail du BUMIGEB.
+  Chacune est une source nouvelle, donc une décision de périmètre.
+
 ## Proposé par l'agent, à arbitrer
 
 <!-- Format : date — outil ou fonctionnalité — justification en une ligne -->
