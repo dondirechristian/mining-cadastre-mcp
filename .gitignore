@@ -2,10 +2,14 @@
 samples/
 *.response.json
 
-# Listes de titres téléchargées depuis le site de la DGCM.
-# Volumineuses (~5 Mo par édition) et redécouvrables avec
-# scripts/fetch_titres.py — jamais versionnées.
-data/
+# PDF téléchargés depuis le site de la DGCM : 5 à 73 Mo par édition,
+# redécouvrables avec scripts/fetch_titres.py — jamais versionnés.
+*.pdf
+
+# Répertoire de travail de l'extraction. Les instantanés datés
+# (data/AAAA-MM-JJ/) sont versionnés : c'est ce que le serveur lit.
+data/extraction/
+data/cache/
 
 # Configuration locale
 .env

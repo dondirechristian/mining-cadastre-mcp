@@ -1,0 +1,69 @@
+{
+  "juridiction": "BF",
+  "pays": "Burkina Faso",
+  "autorite": "Direction generale du cadastre minier (DGCM), Ministere de l'Energie, des Mines et des Carrieres",
+  "edition": "2026-03-31",
+  "edition_libelle": "Titres miniers valides au 31 mars 2026",
+  "publie_le": "2026-04-11",
+  "article": "https://www.ecadastreminier.bf/index.php/2026/04/11/titres-miniers-valides-au-31-mars-2026/",
+  "fichier_url": "https://www.ecadastreminier.bf/wp-content/uploads/2026/04/LISTE%20DES%20TITRES%20MINIERS%20VALIDES%20AU%2031%20MARS%202026.pdf",
+  "fichier_nom": "LISTE DES TITRES MINIERS VALIDES AU 31 MARS 2026.pdf",
+  "fichier_octets": 9450807,
+  "fichier_sha256": "6a18a11bd393a2b4e5e67aeb34db0645dfbbc52270b174c6f09c033b6f1de916",
+  "pages": 45,
+  "lu_le": "2026-09-24",
+  "extrait_par": "scripts/extract_titres.py",
+  "strategie": [
+    "traits"
+  ],
+  "enregistrements": 383,
+  "lignes_suspectes": 6,
+  "sections": [
+    {
+      "ordre": 1,
+      "titre": "LISTE DES PERMIS DE RECHERCHE VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 224
+    },
+    {
+      "ordre": 2,
+      "titre": "LISTE DES PERMIS D'EXPLOITATION SEMI-MECANISEE DE SUBSTANCES DE MINES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 24
+    },
+    {
+      "ordre": 3,
+      "titre": "LISTE DES PERMIS D'EXPLOITATION SEMI MECANISEE DE SUBSTANCES DE CARRIERES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 1
+    },
+    {
+      "ordre": 4,
+      "titre": "LISTE DES PERMIS D'EXPLOITATION INDUSTRIELLE DE MINES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 22
+    },
+    {
+      "ordre": 5,
+      "titre": "LISTE DES AUTORISATIONS DE RECHERCHE DE GITE DE SUBSTANCES DE CARRIERES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 22
+    },
+    {
+      "ordre": 6,
+      "titre": "LISTE DES AUTORISATIONS DE PROSPECTION VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 4
+    },
+    {
+      "ordre": 7,
+      "titre": "LISTE DES AUTORISATIONS D'EXPLOITATION ARTISANALE DE SUBSTANCES DE CARRIERES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 3
+    },
+    {
+      "ordre": 8,
+      "titre": "LISTE DES AUTORISATIONS D'EXPLOITATION ARTISANALE DE SUBSTANCES DE MINES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 7
+    },
+    {
+      "ordre": 9,
+      "titre": "LISTE DES PERMIS D'EXPLOITATION INDUSTRIELLE PERMANENTE DE SUBSTANCES DE CARRIERES VALIDES A LA DATE DU 31/03/2026",
+      "lignes": 76
+    }
+  ],
+  "avertissement": "Extrait d'un PDF scanne puis OCRise, publie par la DGCM. Instantane date, non contractuel. Le registre officiel est la seule reference opposable."
+}

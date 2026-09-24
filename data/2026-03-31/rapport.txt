@@ -1,0 +1,52 @@
+==============================================================================
+EXTRACTION — LISTE DES TITRES MINIERS VALIDES AU 31 MARS 2026.pdf
+pages : 45  |  sections repérées : 9
+==============================================================================
+
+### MÉTHODE « position »
+lignes extraites : 383
+lignes rejetées  : 2
+lignes suspectes : 6 / 383  (1.6 %)
+numéros manquants dans la suite : 3   doublons : 0
+
+stratégie ayant servi :
+   383  traits
+
+continuité des numéros d'ordre (mesure des lignes perdues) :
+  section 1 : suite 1–225, 1 manquants [224], 0 doublons []
+  section 2 : suite 1–24, 0 manquants [], 0 doublons []
+  section 3 : suite 1–1, 0 manquants [], 0 doublons []
+  section 4 : suite 1–22, 0 manquants [], 0 doublons []
+  section 5 : suite 1–22, 0 manquants [], 0 doublons []
+  section 6 : suite 1–4, 1 manquants [3], 0 doublons []
+  section 7 : suite 1–3, 0 manquants [], 0 doublons []
+  section 8 : suite 1–7, 0 manquants [], 0 doublons []
+  section 9 : suite 1–77, 1 manquants [28], 0 doublons []
+
+lignes par section :
+  [1] pages 1– 25 :  224  LISTE DES PERMIS DE RECHERCHE VALIDES A LA DATE DU 31/03/202
+  [2] pages 26– 28 :   24  LISTE DES PERMIS D'EXPLOITATION SEMI-MECANISEE DE SUBSTANCES
+  [3] pages 29– 29 :    1  LISTE DES PERMIS D'EXPLOITATION SEMI MECANISEE DE SUBSTANCES
+  [4] pages 30– 32 :   22  LISTE DES PERMIS D'EXPLOITATION INDUSTRIELLE DE MINES VALIDE
+  [5] pages 33– 35 :   22  LISTE DES AUTORISATIONS DE RECHERCHE DE GITE DE SUBSTANCES D
+  [6] pages 36– 36 :    4  LISTE DES AUTORISATIONS DE PROSPECTION VALIDES A LA DATE DU 
+  [7] pages 37– 37 :    3  LISTE DES AUTORISATIONS D'EXPLOITATION ARTISANALE DE SUBSTAN
+  [8] pages 38– 38 :    7  LISTE DES AUTORISATIONS D'EXPLOITATION ARTISANALE DE SUBSTAN
+  [9] pages 39– 45 :   76  LISTE DES PERMIS D'EXPLOITATION INDUSTRIELLE PERMANENTE DE S
+
+motifs de rejet :
+     2  ancre vide : aucun champ identifiant (code, nom, détenteur, dates)
+
+champs suspects, par motif :
+     1  date d'octroi hors format
+     1  date d'expiration hors format
+     1  communes contient '~'
+     1  code non numérique
+     1  statut hors vocabulaire
+     1  numéro d'ordre absent
+     1  nom contient '\\'
+
+CSV : C:\Users\CHRIST~1\AppData\Local\Temp\claude\c--dev-mining-cadastre-mcp\dd6dec23-040b-4fb6-a099-d6f89db4a115\scratchpad\snap\titres_consolide.csv
+
+------------------------------------------------------------------------------
+Aucune valeur n'a été corrigée. On répare le découpage, jamais le texte.
