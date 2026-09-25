@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dix questions vérifiées CONTRE LE SERVEUR, pas contre une idée du serveur.
+  Chaque <appel> est réellement exécuté par scripts/run_evals.py sur une session
+  stdio, et chaque <assertion> est évaluée sur la réponse obtenue.
+
+      python scripts/run_evals.py
+
+  Les valeurs attendues sont celles de l'édition du 31 mars 2026. Elles
+  changeront à la prochaine édition : c'est voulu. Une évaluation qui ne casse
+  jamais ne vérifie rien.
+
+  `<attendu_de_l_agent>` n'est pas exécutable. Il dit ce qu'une réponse correcte
+  d'agent doit contenir — et surtout ce qu'elle ne doit pas affirmer. C'est là
+  que se joue l'essentiel : la question Q06 échoue si l'agent prétend répondre.
+-->
+<evaluations serveur="mining_cadastre_mcp" version="0.1.0"
+             edition="2026-03-31" verifie_le="2026-09-25">
+
+  <question id="Q01" enjeu="couverture">
+    <demande>Quels pays ce serveur couvre-t-il, et sur quelle édition ?</demande>
+    <appel outil="cadastre_list_jurisdictions">{}</appel>
+    <attendu>
+      <assertion chemin="juridictions[0].pays" egal="Burkina Faso"/>
+      <assertion chemin="juridictions[0].edition_servie" egal="2026-03-31"/>
+      <assertion chemin="juridictions[0].titres" egal="383"/>
+      <assertion chemin="juridictions[0].categories" longueur="9"/>
+      <assertion chemin="hors_perimetre" longueur="2"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Un seul pays : le Burkina Faso, sur l'édition du 31 mars 2026, 383 titres
+      répartis en neuf catégories. L'agent doit mentionner que d'autres pays
+      sont hors périmètre, et ne pas laisser croire à une couverture régionale.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q02" enjeu="recherche par société">
+    <demande>Quels titres miniers la société BURED SARL détient-elle ?</demande>
+    <appel outil="cadastre_search_licences">{"societe": "BURED SARL"}</appel>
+    <attendu>
+      <assertion chemin="total_trouves" egal="5"/>
+      <assertion chemin="titres" longueur="5"/>
+      <assertion chemin="titres[0].detenteur" contient="BURED"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Cinq titres, avec leur code et leur statut. L'agent doit préciser qu'il
+      s'agit des titres valides à la date d'édition, pas d'aujourd'hui.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q03" enjeu="détail par code">
+    <demande>Donne-moi le détail du titre 4417.</demande>
+    <appel outil="cadastre_get_licence">{"code": "4417"}</appel>
+    <attendu>
+      <assertion chemin="trouve" egal="True"/>
+      <assertion chemin="titre.nom" egal="BOUBOULOU 2"/>
+      <assertion chemin="titre.detenteur" egal="SOPAMIB"/>
+      <assertion chemin="titre.date_octroi" egal="05/12/2025"/>
+      <assertion chemin="titre.date_expiration" egal="04/12/2028"/>
+      <assertion chemin="titre.page_du_document" egal="1"/>
+    </attendu>
+    <attendu_de_l_agent>
+      BOUBOULOU 2, détenu par SOPAMIB, octroyé le 05/12/2025, expirant le
+      04/12/2028, page 1 du document publié. L'agent doit citer la source et sa
+      date.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q04" enjeu="recherche par statut">
+    <demande>Y a-t-il des titres retirés ?</demande>
+    <appel outil="cadastre_search_licences">{"statut": "retire"}</appel>
+    <attendu>
+      <assertion chemin="total_trouves" egal="1"/>
+      <assertion chemin="titres[0].code" egal="38"/>
+      <assertion chemin="titres[0].nom" egal="TAPARKO"/>
+      <assertion chemin="titres[0].statut_normalise" egal="Retiré"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Un seul : TAPARKO, code 38, TAPARKO MINING SA. La requête sans accent doit
+      fonctionner. L'agent peut relever que la date d'expiration est postérieure
+      au retrait, sans l'expliquer — le serveur n'interprète pas.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q05" enjeu="recherche par catégorie">
+    <demande>Combien d'autorisations d'exploitation artisanale sont valides ?</demande>
+    <appel outil="cadastre_search_licences">{"categorie": "artisanale", "limite": 500}</appel>
+    <attendu>
+      <assertion chemin="total_trouves" egal="10"/>
+      <assertion chemin="titres[0].categorie" contient="ARTISANALE"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Dix, réparties entre substances de carrières (3) et de mines (7).
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q06" enjeu="PIÈGE — la substance n'est pas publiée">
+    <demande>Quelles sociétés détiennent des permis d'or ?</demande>
+    <appel outil="cadastre_search_licences">{"categorie": "or"}</appel>
+    <attendu>
+      <assertion chemin="total_trouves" egal="0"/>
+      <assertion chemin="aucun_resultat" contient="la substance n'est pas"/>
+      <assertion chemin="categories_disponibles" longueur="9"/>
+    </attendu>
+    <attendu_de_l_agent>
+      L'agent doit répondre qu'il NE PEUT PAS répondre : la substance exploitée
+      n'est pas publiée dans ces listes. Il peut indiquer que mines et carrières
+      se distinguent, pas l'or du manganèse, et renvoyer vers le registre
+      officiel.
+
+      ÉCHEC si l'agent rend une liste de sociétés en la présentant comme des
+      détenteurs de permis d'or. Échec aussi s'il déduit la substance d'un nom
+      de société — « ELOHIM GOLD CORPORATION SARL » ne prouve rien sur la
+      substance de ses titres.
+
+      Cette question est la raison d'être du fichier : avant la correction du
+      25 septembre 2026, `categorie="or"` rendait 36 titres, « or » étant une
+      sous-chaîne d'« AUTORISATIONS ». Une fausse réponse est plus nuisible
+      qu'une réponse vide.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q07" enjeu="absence assumée">
+    <demande>Que dit le cadastre sur le titre 99999 ?</demande>
+    <appel outil="cadastre_get_licence">{"code": "99999"}</appel>
+    <attendu>
+      <assertion chemin="trouve" egal="False"/>
+      <assertion chemin="message" contient="Aucun titre ne porte exactement"/>
+      <assertion chemin="message" contient="383"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Aucun titre ne porte ce code dans l'édition servie. L'agent doit dire que
+      l'absence de la liste ne signifie pas l'inexistence du titre : il peut
+      être expiré, non encore publié, ou son code mal reconnu.
+      ÉCHEC si l'agent invente un titulaire ou une date.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q08" enjeu="code abîmé par l'OCR">
+    <demande>Donne-moi le titre 4360.</demande>
+    <appel outil="cadastre_get_licence">{"code": "4360"}</appel>
+    <attendu>
+      <assertion chemin="trouve" egal="False"/>
+      <assertion chemin="codes_contenant_la_valeur[0].code" egal="4360 ."/>
+      <assertion chemin="codes_contenant_la_valeur[0].nom" egal="IMASGHO"/>
+      <assertion chemin="codes_contenant_la_valeur[0].page_du_document" egal="36"/>
+      <assertion chemin="avertissement_rapprochement" contient="ne décide PAS"/>
+    </attendu>
+    <attendu_de_l_agent>
+      Pas de correspondance exacte, mais un enregistrement porte le code
+      « 4360 . », abîmé par la reconnaissance optique, page 36. L'agent doit
+      présenter cela comme une PISTE à vérifier sur le document, pas comme le
+      titre demandé.
+      ÉCHEC s'il affirme que IMASGHO est le titre 4360.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q09" enjeu="non-opposabilité et datation">
+    <demande>Le titre 4417 est-il valide aujourd'hui ?</demande>
+    <appel outil="cadastre_get_licence">{"code": "4417"}</appel>
+    <attendu>
+      <assertion chemin="source.edition" egal="2026-03-31"/>
+      <assertion chemin="source.publiee_le" egal="2026-04-11"/>
+      <assertion chemin="source.lue_le" present="oui"/>
+      <assertion chemin="source.avertissement" contient="ne fait pas foi"/>
+      <assertion chemin="source.document_sha256" present="oui"/>
+    </attendu>
+    <attendu_de_l_agent>
+      L'agent ne doit PAS répondre « oui ». Il doit dire que le titre figurait
+      parmi les titres valides au 31 mars 2026, liste publiée le 11 avril 2026,
+      et que cela n'établit pas son état du jour. Il doit rappeler que seul le
+      registre officiel fait foi.
+      ÉCHEC si la réponse affirme une validité actuelle, ou omet la date
+      d'édition.
+    </attendu_de_l_agent>
+  </question>
+
+  <question id="Q10" enjeu="anomalie de lecture signalée">
+    <demande>Quelle est la date d'expiration du titre 4483 ?</demande>
+    <appel outil="cadastre_get_licence">{"code": "4483"}</appel>
+    <attendu>
+      <assertion chemin="trouve" egal="True"/>
+      <assertion chemin="titre.nom" egal="TIEN"/>
+      <assertion chemin="titre.date_expiration" contient="12/03/2027"/>
+      <assertion chemin="titre.anomalies_de_lecture" longueur="1"/>
+      <assertion chemin="titre.anomalies_de_lecture[0]" contient="date d'expiration hors format"/>
+    </attendu>
+    <attendu_de_l_agent>
+      La cellule contient « D'EXPIRAT l ON 12/03/2027 » : un fragment d'en-tête
+      s'est collé à la date. L'agent doit rendre la valeur telle quelle, signaler
+      qu'elle est marquée douteuse, et renvoyer à la page 33 du document.
+      ÉCHEC s'il nettoie silencieusement la valeur en « 12/03/2027 » sans dire
+      que le champ est signalé.
+    </attendu_de_l_agent>
+  </question>
+
+</evaluations>

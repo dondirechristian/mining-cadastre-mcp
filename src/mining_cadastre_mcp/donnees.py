@@ -10,6 +10,7 @@ import asyncio
 import csv
 import json
 import os
+import re
 import unicodedata
 from pathlib import Path
 
@@ -102,6 +103,20 @@ def replier(texte: str) -> str:
     """
     sans_accent = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode()
     return " ".join(sans_accent.lower().split())
+
+
+def contient_mots(texte: str, requete: str) -> bool:
+    """Vrai si `requete` apparaît dans `texte` sur des frontières de mot.
+
+    Pas une sous-chaîne brute : « or » ne doit PAS répondre sur
+    « AUTORISATIONS ». Sans cette règle, un agent cherchant les permis d'or
+    recevait 36 titres sans rapport — une fausse réponse est plus nuisible
+    qu'une réponse vide, surtout ici où la substance n'est pas publiée.
+    """
+    cible, motif = replier(texte), replier(requete)
+    if not motif:
+        return True
+    return re.search(rf"\b{re.escape(motif)}\b", cible) is not None
 
 
 def titre_public(ligne: dict) -> dict:

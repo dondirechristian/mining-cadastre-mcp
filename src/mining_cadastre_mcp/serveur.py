@@ -173,7 +173,9 @@ async def cadastre_search_licences(
             continue
         if q_code and q_code not in donnees.replier(ligne.get("code_plat", "")):
             continue
-        if q_categorie and q_categorie not in donnees.replier(ligne.get("section_titre", "")):
+        # `categorie` se compare sur des frontières de mot : « or » ne doit pas
+        # répondre sur « AUTORISATIONS ». Voir donnees.contient_mots.
+        if categorie and not donnees.contient_mots(ligne.get("section_titre", ""), categorie):
             continue
         if q_statut:
             # Le statut se compare à la valeur canonique ET à la forme imprimée :
@@ -211,6 +213,10 @@ async def cadastre_search_licences(
             "un rapprochement. `cadastre_list_jurisdictions` donne les catégories "
             "disponibles et leur libellé exact."
         )
+        if categorie:
+            charge["categories_disponibles"] = [
+                s.get("titre") for s in cat["source"].get("sections", [])
+            ]
     return _reponse(charge, cat["source"])
 
 
