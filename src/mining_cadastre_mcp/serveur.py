@@ -214,5 +214,96 @@ async def cadastre_search_licences(
     return _reponse(charge, cat["source"])
 
 
+@serveur.tool(
+    name="cadastre_get_licence",
+    title="Détail d'un titre minier",
+    description=(
+        "Rend le détail d'un titre minier par son code, l'identifiant numérique "
+        "que porte la liste publiée. Ce code est stable d'une édition à l'autre : "
+        "c'est la clé pour suivre un titre dans le temps.\n\n"
+        "Le code doit correspondre exactement. Pour le trouver, passer par "
+        "`cadastre_search_licences`. Si plusieurs enregistrements portent le même "
+        "code — ce qui signale une anomalie de lecture dans la source — ils sont "
+        "tous rendus, sans qu'aucun soit choisi à la place de l'appelant.\n\n"
+        "Le texte vient d'un PDF scanné puis océrisé ; `anomalies_de_lecture` "
+        "signale ce qui est douteux, rien n'est corrigé. La donnée reflète la "
+        "date d'édition et ne fait pas foi : le registre officiel est la seule "
+        "référence opposable. Ne pas s'en servir pour vérifier un titre sans "
+        "confirmer auprès de l'autorité citée."
+    ),
+    annotations=ToolAnnotations(
+        title="Détail d'un titre minier",
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
+    ),
+)
+async def cadastre_get_licence(code: str) -> str:
+    """Détail d'un titre par son code."""
+    try:
+        cat = await donnees.catalogue()
+    except donnees.DonneesIntrouvables as exc:
+        return json.dumps({"erreur": str(exc)}, ensure_ascii=False, indent=2)
+
+    recherche = donnees.replier(code)
+    if not recherche:
+        return json.dumps(
+            {
+                "erreur": "Le paramètre `code` est obligatoire et ne peut être vide. "
+                          "C'est l'identifiant numérique du titre, par exemple « 4417 ». "
+                          "Utiliser `cadastre_search_licences` pour le trouver."
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    exacts = [l for l in cat["lignes"] if donnees.replier(l.get("code_plat", "")) == recherche]
+
+    if not exacts:
+        # Le code cherché figure peut-être dans une cellule que l'OCR a salie
+        # (« 4360 . », « 3751 SIB »). On le signale comme piste, sans décider
+        # qu'il s'agit du même titre.
+        approchants = [
+            donnees.titre_public(l)
+            for l in cat["lignes"]
+            if recherche in donnees.replier(l.get("code_plat", ""))
+        ]
+        charge = {
+            "code_demande": code,
+            "trouve": False,
+            "message": (
+                f"Aucun titre ne porte exactement le code « {code} » dans l'édition "
+                f"{cat['source'].get('edition')} ({cat['source'].get('enregistrements')} "
+                f"titres). Un titre absent de cette liste peut être expiré, non encore "
+                f"publié, ou son code mal reconnu par l'OCR."
+            ),
+        }
+        if approchants:
+            charge["codes_contenant_la_valeur"] = approchants
+            charge["avertissement_rapprochement"] = (
+                "Ces enregistrements contiennent la valeur demandée dans un code "
+                "abîmé par la reconnaissance optique. Le serveur ne décide PAS "
+                "qu'il s'agit du titre cherché : à vérifier sur le document, page "
+                "indiquée."
+            )
+        return _reponse(charge, cat["source"])
+
+    charge = {
+        "code_demande": code,
+        "trouve": True,
+        "titre": donnees.titre_public(exacts[0]),
+    }
+    if len(exacts) > 1:
+        charge["titre"] = None
+        charge["titres_homonymes"] = [donnees.titre_public(l) for l in exacts]
+        charge["avertissement_homonymie"] = (
+            f"{len(exacts)} enregistrements portent le code « {code} » dans la même "
+            f"édition. Un code est censé être unique : c'est une anomalie de la "
+            f"source ou de sa lecture. Tous sont rendus, aucun n'est choisi."
+        )
+    return _reponse(charge, cat["source"])
+
+
 def main() -> None:
     serveur.run(transport="stdio")
