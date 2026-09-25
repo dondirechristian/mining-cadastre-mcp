@@ -113,5 +113,106 @@ async def cadastre_list_jurisdictions() -> str:
     return _reponse(charge, source)
 
 
+@serveur.tool(
+    name="cadastre_search_licences",
+    title="Rechercher des titres miniers",
+    description=(
+        "Recherche des titres miniers dans la liste publiée par l'autorité. "
+        "Tous les critères sont facultatifs et se combinent ; sans critère, rend "
+        "le début de la liste. La comparaison ignore la casse et les accents.\n\n"
+        "ATTENTION sur deux points. Premièrement, la substance exploitée n'est "
+        "PAS publiée dans ces listes : `categorie` porte sur la catégorie de "
+        "titre — permis de recherche, exploitation artisanale, mines contre "
+        "carrières — et ne permet pas de distinguer l'or du manganèse. "
+        "Deuxièmement, le texte provient d'un PDF scanné puis océrisé : une "
+        "valeur mal reconnue peut empêcher un rapprochement. Le champ "
+        "`anomalies_de_lecture` signale les enregistrements concernés. Rien "
+        "n'est corrigé.\n\n"
+        "La donnée ne fait pas foi et reflète la date d'édition, pas le jour. Le "
+        "registre officiel est la seule référence opposable."
+    ),
+    annotations=ToolAnnotations(
+        title="Rechercher des titres miniers",
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
+    ),
+)
+async def cadastre_search_licences(
+    societe: str = "",
+    statut: str = "",
+    code: str = "",
+    categorie: str = "",
+    limite: int = 50,
+) -> str:
+    """Recherche par société, catégorie de titre, statut ou code."""
+    try:
+        cat = await donnees.catalogue()
+    except donnees.DonneesIntrouvables as exc:
+        return json.dumps({"erreur": str(exc)}, ensure_ascii=False, indent=2)
+
+    if limite < 1 or limite > 500:
+        return json.dumps(
+            {
+                "erreur": f"limite={limite} hors bornes. Attendu un entier de 1 à 500. "
+                          f"La liste servie compte {len(cat['lignes'])} titres."
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    q_societe = donnees.replier(societe)
+    q_statut = donnees.replier(statut)
+    q_code = donnees.replier(code)
+    q_categorie = donnees.replier(categorie)
+
+    trouves = []
+    for ligne in cat["lignes"]:
+        if q_societe and q_societe not in donnees.replier(ligne.get("detenteur_plat", "")):
+            continue
+        if q_code and q_code not in donnees.replier(ligne.get("code_plat", "")):
+            continue
+        if q_categorie and q_categorie not in donnees.replier(ligne.get("section_titre", "")):
+            continue
+        if q_statut:
+            # Le statut se compare à la valeur canonique ET à la forme imprimée :
+            # un statut mal océrisé reste trouvable par ce que le document montre.
+            cibles = (
+                donnees.replier(ligne.get("statut_normalise", "")),
+                donnees.replier(ligne.get("statut_plat", "")),
+            )
+            if not any(q_statut in c for c in cibles if c):
+                continue
+        trouves.append(ligne)
+
+    charge = {
+        "criteres": {
+            "societe": societe or None,
+            "statut": statut or None,
+            "code": code or None,
+            "categorie": categorie or None,
+            "limite": limite,
+        },
+        "total_trouves": len(trouves),
+        "rendus": min(len(trouves), limite),
+        "titres": [donnees.titre_public(l) for l in trouves[:limite]],
+    }
+    if len(trouves) > limite:
+        charge["troncature"] = (
+            f"{len(trouves)} titres correspondent, {limite} sont rendus. "
+            f"Préciser les critères, ou relever `limite` jusqu'à 500."
+        )
+    if not trouves:
+        charge["aucun_resultat"] = (
+            "Aucun titre ne correspond. Vérifier l'orthographe du détenteur, ou "
+            "élargir en retirant un critère. Rappel : la substance n'est pas "
+            "publiée dans ces listes, et une valeur mal océrisée peut empêcher "
+            "un rapprochement. `cadastre_list_jurisdictions` donne les catégories "
+            "disponibles et leur libellé exact."
+        )
+    return _reponse(charge, cat["source"])
+
+
 def main() -> None:
     serveur.run(transport="stdio")

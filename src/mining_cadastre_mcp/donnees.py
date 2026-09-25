@@ -10,6 +10,7 @@ import asyncio
 import csv
 import json
 import os
+import unicodedata
 from pathlib import Path
 
 # Emplacements fouillés, dans l'ordre. Le premier qui contient un instantané
@@ -91,6 +92,41 @@ async def catalogue() -> dict:
     if _cache is None:
         _cache = await asyncio.to_thread(_charger)
     return _cache
+
+
+def replier(texte: str) -> str:
+    """Forme comparable d'un texte : sans accents, sans casse, espaces réduits.
+
+    Sert UNIQUEMENT à comparer. La valeur rendue à l'appelant reste celle du
+    document : on rapproche une requête d'un texte, on ne réécrit pas le texte.
+    """
+    sans_accent = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode()
+    return " ".join(sans_accent.lower().split())
+
+
+def titre_public(ligne: dict) -> dict:
+    """Vue d'un titre telle qu'elle sort des outils.
+
+    `statut` porte ce qu'imprime le document ; `statut_normalise` la valeur
+    canonique du vocabulaire observé. Les deux figurent, pour qu'on sache
+    toujours ce que la source disait.
+    """
+    suspects = [s for s in (ligne.get("suspects") or "").split(" | ") if s]
+    return {
+        "code": ligne.get("code_plat", ""),
+        "nom": ligne.get("nom_plat", ""),
+        "detenteur": ligne.get("detenteur_plat", ""),
+        "statut": ligne.get("statut_plat", ""),
+        "statut_normalise": ligne.get("statut_normalise", ""),
+        "date_octroi": ligne.get("date_octroi_plat", ""),
+        "date_expiration": ligne.get("date_expiration_plat", ""),
+        "provinces": ligne.get("provinces_plat", ""),
+        "communes": ligne.get("communes_plat", ""),
+        "categorie": ligne.get("section_titre", ""),
+        "page_du_document": int(ligne["page"]) if (ligne.get("page") or "").isdigit() else None,
+        "strategie_extraction": ligne.get("strategie", ""),
+        "anomalies_de_lecture": suspects,
+    }
 
 
 def bloc_source(source: dict) -> dict:
