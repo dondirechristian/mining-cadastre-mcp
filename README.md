@@ -8,7 +8,9 @@ mining titles — holder, status, grant and expiry dates, provinces and communes
 > list published by the Direction générale du cadastre minier. 383 titles from
 > the edition of 31 March 2026.
 
-<!-- TODO: GIF de démonstration. Une transcription d'appels réels tient lieu
+<!-- TODO: insérer ici une fois enregistré :  ![Demonstration](docs/demo.gif)
+     Le script à filmer est scripts/demo.py — tous ses appels sont réels.
+     Ancienne note : une transcription d'appels réels tient lieu
      de démonstration ci-dessous en attendant ; elle a l'avantage d'être
      vérifiable en relançant scripts/run_evals.py. -->
 
