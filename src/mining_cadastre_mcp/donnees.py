@@ -14,29 +14,35 @@ import re
 import unicodedata
 from pathlib import Path
 
-# Emplacements fouillés, dans l'ordre. Le premier qui contient un instantané
-# gagne. MINING_CADASTRE_DATA permet de pointer ailleurs sans toucher au code.
-_RACINES = (
-    os.environ.get("MINING_CADASTRE_DATA", ""),
+# Emplacements fouillés par défaut, dans l'ordre.
+_RACINES_PAR_DEFAUT = (
     Path(__file__).resolve().parents[2] / "data",   # dépôt en place
     Path(__file__).resolve().parent / "data",       # paquet installé
 )
+
+# MINING_CADASTRE_DATA, si défini, est IMPÉRATIF : on ne cherche nulle part
+# ailleurs. Une faute de frappe doit faire échouer le serveur, jamais le faire
+# retomber en silence sur une autre édition — ce serveur sert de la donnée
+# datée, servir la mauvaise sans le dire serait le pire défaut possible.
+_VARIABLE = "MINING_CADASTRE_DATA"
 
 
 class DonneesIntrouvables(RuntimeError):
     """Aucun instantané lisible. Le message dit où l'on a cherché et quoi faire."""
 
 
-def _racines_existantes() -> list[Path]:
+def _racines_a_fouiller() -> tuple[list[Path], bool]:
+    """Racines à fouiller, et si elles viennent d'un choix explicite."""
+    impose = os.environ.get(_VARIABLE, "").strip()
+    if impose:
+        return [Path(impose).resolve()], True
     vues, racines = set(), []
-    for racine in _RACINES:
-        if not racine:
-            continue
+    for racine in _RACINES_PAR_DEFAUT:
         chemin = Path(racine).resolve()
         if chemin not in vues:
             vues.add(chemin)
             racines.append(chemin)
-    return racines
+    return racines, False
 
 
 def _editions(racine: Path) -> list[Path]:
@@ -65,15 +71,23 @@ def _lire_instantane(dossier: Path) -> dict:
 
 
 def _charger() -> dict:
+    racines, impose = _racines_a_fouiller()
     cherchés = []
-    for racine in _racines_existantes():
+    for racine in racines:
         cherchés.append(str(racine))
         editions = _editions(racine)
         if editions:
             return _lire_instantane(editions[0])
+    origine = (
+        f"{_VARIABLE} impose ce seul emplacement ; aucun repli n'est tenté, pour "
+        f"qu'une faute de frappe ne fasse pas servir une autre édition en silence.\n"
+        if impose
+        else ""
+    )
     raise DonneesIntrouvables(
         "Aucun instantané de titres miniers n'a été trouvé.\n"
-        "Cherché dans :\n  " + "\n  ".join(cherchés) + "\n\n"
+        + origine
+        + "Cherché dans :\n  " + "\n  ".join(cherchés) + "\n\n"
         "Un instantané est un répertoire daté AAAA-MM-JJ contenant source.json\n"
         "et titres.csv. Pour en produire un :\n"
         "  python scripts/fetch_titres.py --list\n"
