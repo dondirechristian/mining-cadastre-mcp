@@ -108,14 +108,76 @@ Sur les 11 pages qui passent, les bornes varient de 22 à 35 pt — bien au-del�
 des 9 pt de dérive mesurés en (a). Une borne médiane de document n'est donc pas
 utilisable telle quelle.
 
-Trois pistes, non tranchées :
+### Trois pistes essayées, trois échecs mesurés — 26 septembre 2026
 
-1. **Réutiliser les bornes d'une page voisine qui passe**, la géométrie étant
-   stable à l'intérieur d'une section. Demande de traiter la dérive de scan.
-2. **Déduire les bornes des lignes de données** par regroupement en abscisse,
-   sans dépendre de l'en-tête. Le corps est mieux reconnu que l'en-tête.
-3. **Rapprochement approché des libellés** — « SLATUT » vers « STATUT ». C'est
-   une correction au jugé sur l'ancrage ; à considérer avec méfiance.
+Aucune n'a été retenue. Les chiffres sont consignés pour qu'on ne refasse pas
+le travail.
+
+**1. Déduire les bornes des lignes de données, par corridors vides.**
+Rejetée. Le nombre de corridors en abscisse varie de 1 à 10 selon la page :
+les cellules de données se touchent d'une colonne à l'autre — une raison
+sociale longue, une liste de communes — et ne laissent aucun blanc exploitable.
+
+```
+p3 : 4 corridors    p5 : 1     p12 : 2
+p26: 3              p37: 10    p43 : 7
+```
+
+**2. Caler un gabarit sur les colonnes de dates.**
+Le signal est excellent, le report ne l'est pas. Les dates ont une forme
+reconnaissable (`JJ/MM/AAAA`) et l'OCR les lit bien : **41 pages sur 46**
+rendent deux colonnes de dates nettes, et sur les 11 pages dont l'en-tête est
+lisible, ces colonnes tombent **11 fois sur 11** entre les bonnes bornes. Deux
+ancres suffisent en principe à caler un gabarit — décalage et échelle.
+
+Validation un-contre-tous sur les 8 pages exploitables de la section 1,
+56 couples gabarit → cible :
+
+| | écart maximal de borne |
+|---|---|
+| pire cas | **12,2 pt** |
+| médiane | 5,8 pt |
+| couples sous 10 pt | 32 / 56 |
+| couples sous 5 pt | 24 / 56 |
+| largeur de la colonne la plus étroite | **25,5 pt** |
+
+Un écart de 12 pt sur une colonne de 25,5 pt peut faire basculer un mot dans la
+colonne voisine — **silencieusement**. Sur une édition déjà à 98,3 % de lignes
+signalées, cela produirait une donnée qui a l'air plus complète sans être plus
+fiable. C'est exactement le défaut que ce projet refuse.
+
+S'y ajoute une limite de couverture : **six sections sur neuf n'ont aucune page
+à en-tête lisible**, donc aucun gabarit. La piste ne récupérerait qu'environ
+19 des 35 pages rejetées, au prix de ce risque.
+
+**3. Augmenter la résolution de rendu.**
+Rejetée, et c'est le résultat le plus net. Sur un échantillon de 8 pages :
+
+| Résolution | Pages à 9 libellés | Coût |
+|---|---|---|
+| 300 ppp | 0 / 8 | 3,18 s/page |
+| 400 ppp | 1 / 8 | 3,94 s/page |
+| 600 ppp | 0 / 8 | 8,11 s/page |
+
+**Les libellés ne sont pas sous-résolus, ils sont abîmés dans le scan.** Monter
+à 600 ppp coûte 2,5 fois plus cher et lit moins bien.
+
+### Ce qui débloquerait réellement ces éditions
+
+Le problème n'est pas technique de notre côté, il est en amont : la DGCM a
+publié un scan brut. Les éditions précédentes, elles, étaient passées à Paper
+Capture. Trois issues, par ordre d'efficacité :
+
+1. **Que la DGCM republie une version océrisée**, comme elle l'a fait pour
+   mars 2026 et juin 2025. C'est la seule issue qui rende la donnée fiable.
+2. **Un prétraitement d'image** — redressement, binarisation, débruitage — avant
+   Tesseract. Non essayé. C'est la seule piste technique restante qui ne repose
+   pas sur une supposition de structure.
+3. **Une saisie manuelle assistée**, si une édition sans couche texte devait
+   absolument être servie.
+
+En attendant, ces éditions ne sont pas servies, et `cadastre_list_jurisdictions`
+dit qu'elles existent et pourquoi elles manquent.
 
 ### État de vérification
 

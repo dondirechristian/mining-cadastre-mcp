@@ -58,3 +58,16 @@ Tout ce qui est hors périmètre v0.1. Claude Code écrit ici au lieu de coder.
   celles de juin 2025 — mêmes colonnes, mêmes valeurs de statut ?
 - Que fait le serveur si une nouvelle édition change de gabarit ? Échec clair
   plutôt qu'interprétation de travers, mais reste à définir où le dire.
+
+## Écarté après mesure — ne pas refaire
+
+- **Débloquer les éditions sans couche texte par la géométrie.** Trois pistes
+  essayées et mesurées le 26 septembre 2026, trois échecs : corridors vides
+  (1 à 10 par page, inexploitables), calage sur les colonnes de dates (signal
+  excellent, 11/11, mais report du gabarit à ±12,2 pt sur des colonnes de
+  25,5 pt, et six sections sur neuf sans gabarit disponible), résolution plus
+  haute (600 ppp lit moins bien que 300 et coûte 2,5 fois plus).
+  Chiffres complets dans `docs/EDITIONS.md`.
+  Reste non essayé : un prétraitement d'image avant Tesseract — redressement,
+  binarisation, débruitage. C'est la seule piste technique qui ne repose pas
+  sur une supposition de structure.
