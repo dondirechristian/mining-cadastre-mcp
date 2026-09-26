@@ -26,11 +26,20 @@
       <assertion chemin="juridictions[0].titres" egal="383"/>
       <assertion chemin="juridictions[0].categories" longueur="9"/>
       <assertion chemin="hors_perimetre" longueur="2"/>
+      <assertion chemin="juridictions[0].editions_publiees_depuis[0].edition" egal="2026-06-30"/>
+      <assertion chemin="source.edition_la_plus_recente" egal="False"/>
+      <assertion chemin="source.avertissement_anciennete" contient="N'EST PAS L'ÉDITION LA PLUS RÉCENTE"/>
     </attendu>
     <attendu_de_l_agent>
       Un seul pays : le Burkina Faso, sur l'édition du 31 mars 2026, 383 titres
       répartis en neuf catégories. L'agent doit mentionner que d'autres pays
       sont hors périmètre, et ne pas laisser croire à une couverture régionale.
+
+      Il doit AUSSI signaler que ce n'est pas l'édition la plus récente : celle
+      du 30 juin 2026 a été publiée mais n'est pas servie, faute de couche
+      texte exploitable.
+      ÉCHEC si l'agent présente le 31 mars 2026 comme l'état le plus à jour
+      publié par l'autorité.
     </attendu_de_l_agent>
   </question>
 

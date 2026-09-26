@@ -165,12 +165,16 @@ def bloc_source(source: dict) -> dict:
     réponse doit dire d'où vient la donnée, de quand elle date, et qu'elle ne
     fait pas foi.
     """
-    return {
+    # Une édition plus récente peut exister sans être servie. Le taire
+    # reviendrait à laisser croire que l'on sert l'état le plus à jour publié.
+    plus_recentes = source.get("editions_plus_recentes_connues") or []
+    bloc = {
         "juridiction": source.get("juridiction"),
         "pays": source.get("pays"),
         "autorite": source.get("autorite"),
         "edition": source.get("edition"),
         "edition_libelle": source.get("edition_libelle"),
+        "edition_la_plus_recente": not plus_recentes,
         "publiee_le": source.get("publie_le"),
         "lue_le": source.get("lu_le"),
         "article": source.get("article"),
@@ -189,3 +193,16 @@ def bloc_source(source: dict) -> dict:
             "seule référence opposable."
         ),
     }
+
+    if plus_recentes:
+        bloc["editions_plus_recentes_non_servies"] = plus_recentes
+        derniere = plus_recentes[0].get("edition")
+        bloc["avertissement_anciennete"] = (
+            f"CE N'EST PAS L'ÉDITION LA PLUS RÉCENTE. L'autorité a publié depuis "
+            f"l'édition du {derniere}, qui n'est pas servie pour la raison indiquée "
+            f"dans `editions_plus_recentes_non_servies`. Les titres octroyés, "
+            f"renouvelés, suspendus ou retirés depuis le {source.get('edition')} "
+            f"n'apparaissent donc pas ici. Consulter le registre officiel pour "
+            f"l'état courant."
+        )
+    return bloc

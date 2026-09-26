@@ -84,6 +84,7 @@ async def cadastre_list_jurisdictions() -> str:
                 "couverture": "active",
                 "edition_servie": source.get("edition"),
                 "publiee_le": source.get("publie_le"),
+                "editions_publiees_depuis": source.get("editions_plus_recentes_connues", []),
                 "periodicite": "trimestrielle : 31 mars, 30 juin, 31 octobre, 31 décembre",
                 "titres": source.get("enregistrements"),
                 "categories": categories,

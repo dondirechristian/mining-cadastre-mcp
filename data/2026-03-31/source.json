@@ -65,5 +65,15 @@
       "lignes": 76
     }
   ],
-  "avertissement": "Extrait d'un PDF scanne puis OCRise, publie par la DGCM. Instantane date, non contractuel. Le registre officiel est la seule reference opposable."
+  "avertissement": "Extrait d'un PDF scanne puis OCRise, publie par la DGCM. Instantane date, non contractuel. Le registre officiel est la seule reference opposable.",
+  "editions_plus_recentes_connues": [
+    {
+      "edition": "2026-06-30",
+      "publiee_le": "2026-07-10",
+      "article": "https://www.ecadastreminier.bf/index.php/2026/07/10/titres-miniers-valides-au-30-juin-2026/",
+      "servie": false,
+      "motif": "Publiee sans couche texte (scan brut, Producer 'HP Scan Extended Application'). L'extraction par OCR n'en tire que 116 lignes sur 46 pages, avec 98,3 % de lignes signalees : inexploitable en l'etat. Voir docs/EDITIONS.md."
+    }
+  ],
+  "releve_des_editions_le": "2026-09-26"
 }
