@@ -140,12 +140,28 @@ couverte : c'est lui qui dit à l'agent ce qui est couvert et ce qui ne l'est pa
 
 ## Définition du « terminé » pour la v0.1
 
-- [ ] Les trois outils répondent sur le Burkina Faso
-- [ ] Handshake MCP vérifié en exécution réelle
-- [ ] `evals/questions.xml` : 10 questions vérifiées contre le serveur
-- [ ] `docs/SOURCES.md` complet, colonne CGU renseignée
+Vérifié par exécution le 2 octobre 2026 — `python scripts/run_evals.py`.
+
+- [x] Les trois outils répondent sur le Burkina Faso
+- [x] Handshake MCP vérifié en exécution réelle
+- [x] `evals/questions.xml` : 10 questions vérifiées contre le serveur
+- [x] `docs/SOURCES.md` complet, colonne CGU renseignée
 - [ ] README en anglais, avec GIF de démonstration
-- [ ] Licence MIT
+      — README fait ; **le GIF manque**, `docs/demo.gif` est absent.
+        `scripts/demo.py` est prêt à être filmé, le TODO du README porte la
+        ligne à décommenter. Demande une capture d'écran : à faire par le
+        mainteneur.
+- [x] Licence MIT
+
+Détail de la vérification :
+
+| Case | Constat |
+|---|---|
+| Trois outils | `cadastre_list_jurisdictions`, `cadastre_search_licences`, `cadastre_get_licence` — 383 titres de l'édition du 31 mars 2026 |
+| Handshake | `mining_cadastre_mcp 0.1.0`, protocole `2025-11-25`, session stdio réelle |
+| Évaluations | 10 / 10, 41 assertions, dont 5 pièges où le serveur doit refuser de répondre |
+| SOURCES.md | colonne « CGU lues » = `oui — voir réserve ci-dessous` pour le Burkina ; la réserve dit que ce n'est pas une licence explicite |
+| Licence | `LICENSE` présent, 24 lignes, MIT ; `pyproject.toml` concordant ; note distinguant le logiciel des données |
 
 ## Hors périmètre v0.1
 
