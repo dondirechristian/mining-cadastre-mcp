@@ -146,11 +146,7 @@ Vérifié par exécution le 2 octobre 2026 — `python scripts/run_evals.py`.
 - [x] Handshake MCP vérifié en exécution réelle
 - [x] `evals/questions.xml` : 10 questions vérifiées contre le serveur
 - [x] `docs/SOURCES.md` complet, colonne CGU renseignée
-- [ ] README en anglais, avec GIF de démonstration
-      — README fait ; **le GIF manque**, `docs/demo.gif` est absent.
-        `scripts/demo.py` est prêt à être filmé, le TODO du README porte la
-        ligne à décommenter. Demande une capture d'écran : à faire par le
-        mainteneur.
+- [x] README en anglais, avec GIF de démonstration
 - [x] Licence MIT
 
 Détail de la vérification :
@@ -161,7 +157,13 @@ Détail de la vérification :
 | Handshake | `mining_cadastre_mcp 0.1.0`, protocole `2025-11-25`, session stdio réelle |
 | Évaluations | 10 / 10, 41 assertions, dont 5 pièges où le serveur doit refuser de répondre |
 | SOURCES.md | colonne « CGU lues » = `oui — voir réserve ci-dessous` pour le Burkina ; la réserve dit que ce n'est pas une licence explicite |
+| README | anglais, section française en pied ; `docs/demo.gif` présent, 49 images, 880 Ko |
 | Licence | `LICENSE` présent, 24 lignes, MIT ; `pyproject.toml` concordant ; note distinguant le logiciel des données |
+
+Le GIF n'est pas une capture d'écran : `scripts/demo.py` joue une vraie session
+MCP et journalise ce qu'elle affiche, `scripts/make_demo_gif.py` en dessine les
+images. Le contenu vient d'une exécution réelle, le rendu est reproductible, et
+rien n'a été rejoué de mémoire.
 
 ## Hors périmètre v0.1
 

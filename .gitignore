@@ -38,3 +38,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Journal intermédiaire de la démonstration : régénérable par demo.py
+docs/demo.json

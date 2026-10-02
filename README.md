@@ -8,11 +8,13 @@ mining titles — holder, status, grant and expiry dates, provinces and communes
 > list published by the Direction générale du cadastre minier. 383 titles from
 > the edition of 31 March 2026.
 
-<!-- TODO: insérer ici une fois enregistré :  ![Demonstration](docs/demo.gif)
-     Le script à filmer est scripts/demo.py — tous ses appels sont réels.
-     Ancienne note : une transcription d'appels réels tient lieu
-     de démonstration ci-dessous en attendant ; elle a l'avantage d'être
-     vérifiable en relançant scripts/run_evals.py. -->
+![The server answering, and declining to answer](docs/demo.gif)
+
+<!-- Le GIF est RENDU, pas filmé : scripts/demo.py joue une vraie session MCP
+     et journalise ce qu'elle affiche, scripts/make_demo_gif.py en dessine les
+     images. Le contenu vient donc d'une exécution réelle. Pour le refaire :
+       python scripts/demo.py --pause 0 --journal docs/demo.json
+       python scripts/make_demo_gif.py docs/demo.json --sortie docs/demo.gif -->
 
 ## Why this exists
 

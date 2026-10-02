@@ -33,27 +33,50 @@ RACINE = Path(__file__).resolve().parents[1]
 
 
 class Scene:
+    """Joue la démonstration au terminal, et journalise ce qu'elle affiche.
+
+    Le journal sert à scripts/make_demo_gif.py : le GIF est ainsi rendu à
+    partir d'une exécution RÉELLE, et non d'un script rejoué de mémoire.
+    """
+
     def __init__(self, pause: float, largeur: int) -> None:
         self.pause = pause
         self.largeur = largeur
+        self.journal: list[dict] = []
+
+    def _noter(self, texte: str, style: str, pause: float) -> None:
+        self.journal.append({"texte": texte, "style": style, "pause": pause})
 
     def _attendre(self, facteur: float = 1.0) -> None:
+        # La même attente vaut pour le terminal et pour le GIF : la dernière
+        # ligne journalisée reste à l'écran aussi longtemps.
+        duree = (self.pause or 0.9) * facteur
+        if self.journal:
+            self.journal[-1]["pause"] = max(self.journal[-1]["pause"], duree)
         if self.pause:
             time.sleep(self.pause * facteur)
 
     def titre(self, texte: str) -> None:
-        print(f"\n\033[1;36m{'─' * self.largeur}\033[0m")
+        barre = "─" * self.largeur
+        print(f"\n\033[1;36m{barre}\033[0m")
         print(f"\033[1;36m {texte}\033[0m")
-        print(f"\033[1;36m{'─' * self.largeur}\033[0m")
+        print(f"\033[1;36m{barre}\033[0m")
+        self._noter("", "", 0.1)
+        self._noter(barre, "titre", 0.05)
+        self._noter(f" {texte}", "titre", 0.05)
+        self._noter(barre, "titre", self.pause or 0.9)
         self._attendre()
 
     def demande(self, texte: str) -> None:
         print(f"\n\033[1;33m? {texte}\033[0m")
+        self._noter("", "", 0.1)
+        self._noter(f"? {texte}", "demande", (self.pause or 0.9) * 1.5)
         self._attendre(1.5)
 
     def appel(self, outil: str, args: dict) -> None:
         rendu = json.dumps(args, ensure_ascii=False)
         print(f"\033[2m  → {outil}({rendu})\033[0m")
+        self._noter(f"  → {outil}({rendu})", "gris", self.pause or 0.9)
         self._attendre()
 
     def dire(self, texte: str = "", style: str = "") -> None:
@@ -62,6 +85,7 @@ class Scene:
             print(f"\033[{codes.get(style, '0')}m{texte}\033[0m")
         else:
             print(texte)
+        self._noter(texte, style, 0.12)
 
     def bloc(self, charge: dict, cles: list[str]) -> None:
         extrait = {k: charge[k] for k in cles if k in charge}
@@ -103,7 +127,9 @@ async def jouer(scene: Scene) -> None:
                        f"{j['titres']} titres, {len(j['categories'])} catégories", "gras")
             scene.dire(f"  publiée le {j['publiee_le']}", "gris")
             scene.dire()
-            scene.dire("  ⚠ ce n'est pas l'édition la plus récente :", "jaune")
+            # Pas de symbole d'avertissement : toutes les polices à chasse fixe
+            # ne portent pas U+26A0, et un carré vide dans le GIF fait négligé.
+            scene.dire("  ! ce n'est pas l'édition la plus récente :", "jaune")
             for e in j["editions_publiees_depuis"]:
                 scene.dire(f"    {e['edition']} publiée le {e['publiee_le']}, non servie", "jaune")
             scene._attendre(2)
@@ -166,8 +192,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Démonstration filmable du serveur.")
     parser.add_argument("--pause", type=float, default=0.9, help="Rythme, en secondes")
     parser.add_argument("--largeur", type=int, default=76, help="Largeur des séparateurs")
+    parser.add_argument(
+        "--journal", type=Path, default=None,
+        help="Écrire le déroulé en JSON, pour scripts/make_demo_gif.py",
+    )
     args = parser.parse_args()
-    asyncio.run(jouer(Scene(args.pause, args.largeur)))
+    scene = Scene(args.pause, args.largeur)
+    asyncio.run(jouer(scene))
+    if args.journal:
+        args.journal.write_text(
+            json.dumps(scene.journal, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+        print(f"\n[journal écrit dans {args.journal} — {len(scene.journal)} lignes]")
 
 
 if __name__ == "__main__":
